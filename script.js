@@ -1,367 +1,434 @@
 "use strict";
 
+/*
+  CHI SPACE
+  ----------
+  Local-first workspace.
 
-/* =====================================================
-   SPACE CHI
-   Local Workspace Engine
-===================================================== */
-
-
-/* =====================================================
-   CONSTANTS
-===================================================== */
-
-const STORAGE_KEY = "spacechi_state_v1";
-
-
-/* =====================================================
-   DEFAULT DATA
-===================================================== */
-
-const defaultState = {
-
-  spaces: [
-
-    {
-      id: createId(),
-      name: "فضای من",
-
-      boxes: [
-
-        {
-          id: createId(),
-          type: "note",
-          title: "به Space Chi خوش اومدی",
-          content:
-            "اینجا می‌تونی یادداشت‌ها، کارها، لینک‌ها و پوشه‌هات رو کنار هم نگه داری.",
-          parentId: null,
-          createdAt: Date.now()
-        },
-
-        {
-          id: createId(),
-          type: "task",
-          title: "شروع کار با Space Chi",
-          tasks: [
-            {
-              id: createId(),
-              text: "ساخت اولین Space",
-              done: false
-            },
-            {
-              id: createId(),
-              text: "ساخت اولین یادداشت",
-              done: false
-            }
-          ],
-          parentId: null,
-          createdAt: Date.now()
-        }
-
-      ]
-    }
-
-  ],
-
-  activeSpaceId: null,
-
-  currentFolderId: null,
-
-  filter: "all",
-
-  sort: "newest",
-
-  search: ""
-
-};
+  Features:
+  - Multiple Spaces
+  - Text
+  - Note
+  - Task
+  - Link
+  - Folder
+  - Dragging
+  - Parent relationships
+  - JSON export
+  - LocalStorage persistence
+*/
 
 
-defaultState.activeSpaceId =
-  defaultState.spaces[0].id;
-
+const STORAGE_KEY = "chi_space_v1";
 
 
 /* =====================================================
    STATE
 ===================================================== */
 
-let state = loadState();
+let state = {
+  spaces: [],
+  activeSpaceId: null,
+  counters: {
+    space: 0,
+    box: 0,
+    task: 0
+  }
+};
 
-let selectedType = "note";
-
-let editingBoxId = null;
-
+let dragState = null;
 let toastTimer = null;
-
+let confirmAction = null;
 
 
 /* =====================================================
    DOM
 ===================================================== */
 
-const spacesEl =
-  document.getElementById("spaces");
+const tabsEl = document.getElementById("tabs");
+const workspaceEl = document.getElementById("workspace");
+const toastEl = document.getElementById("toast");
 
-const boxesEl =
-  document.getElementById("boxes");
-
-const emptyState =
-  document.getElementById("emptyState");
-
-const breadcrumbEl =
-  document.getElementById("breadcrumb");
-
-const searchPanel =
-  document.getElementById("searchPanel");
-
-const searchInput =
-  document.getElementById("searchInput");
-
-const boxModal =
-  document.getElementById("boxModal");
-
-const spaceModal =
-  document.getElementById("spaceModal");
-
-const editModal =
-  document.getElementById("editModal");
-
-const formFields =
-  document.getElementById("formFields");
-
-const boxForm =
-  document.getElementById("boxForm");
-
-const spaceForm =
-  document.getElementById("spaceForm");
-
-const editForm =
-  document.getElementById("editForm");
-
-const editFields =
-  document.getElementById("editFields");
-
+const confirmModal = document.getElementById("confirmModal");
+const confirmTitle = document.getElementById("confirmTitle");
+const confirmText = document.getElementById("confirmText");
+const cancelConfirm = document.getElementById("cancelConfirm");
+const acceptConfirm = document.getElementById("acceptConfirm");
 
 
 /* =====================================================
    HELPERS
 ===================================================== */
 
-function createId() {
+function uid(prefix) {
+  state.counters[prefix]++;
 
-  return (
-    Date.now().toString(36) +
-    Math.random()
-      .toString(36)
-      .slice(2, 8)
+  return `${prefix}_${state.counters[prefix]}_${Date.now()
+    .toString(36)
+    .slice(-5)}`;
+}
+
+
+function activeSpace() {
+  return state.spaces.find(
+    space => space.id === state.activeSpaceId
   );
+}
 
+
+function getSpace(id) {
+  return state.spaces.find(
+    space => space.id === id
+  );
+}
+
+
+function getBox(spaceId, boxId) {
+  const space = getSpace(spaceId);
+
+  return space?.boxes.find(
+    box => box.id === boxId
+  );
 }
 
 
 function escapeHTML(value = "") {
-
   return String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
-
-}
-
-
-function truncate(value = "", length = 140) {
-
-  const text = String(value);
-
-  if (text.length <= length)
-    return text;
-
-  return text.slice(0, length) + "…";
-
-}
-
-
-function formatDate(timestamp) {
-
-  return new Intl.DateTimeFormat(
-    "fa-IR",
-    {
-      month: "short",
-      day: "numeric"
-    }
-  ).format(timestamp);
-
-}
-
-
-function getActiveSpace() {
-
-  return state.spaces.find(
-    space =>
-      space.id === state.activeSpaceId
-  ) || state.spaces[0];
-
-}
-
-
-function getCurrentFolder() {
-
-  const space = getActiveSpace();
-
-  if (!space || !state.currentFolderId)
-    return null;
-
-  return space.boxes.find(
-    box =>
-      box.id === state.currentFolderId &&
-      box.type === "folder"
-  ) || null;
-
-}
-
-
-function saveState() {
-
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify(state)
-  );
-
-}
-
-
-function loadState() {
-
-  try {
-
-    const saved =
-      localStorage.getItem(STORAGE_KEY);
-
-    if (!saved)
-      return defaultState;
-
-    const parsed =
-      JSON.parse(saved);
-
-    if (
-      !parsed.spaces ||
-      !Array.isArray(parsed.spaces)
-    ) {
-      return defaultState;
-    }
-
-    return {
-      ...defaultState,
-      ...parsed
-    };
-
-  } catch (error) {
-
-    console.error(error);
-
-    return defaultState;
-
-  }
-
 }
 
 
 function showToast(message) {
+  toastEl.textContent = message;
 
-  const toast =
-    document.getElementById("toast");
-
-  toast.querySelector("span").textContent =
-    message;
-
-  toast.classList.add("show");
+  toastEl.classList.add("show");
 
   clearTimeout(toastTimer);
 
   toastTimer = setTimeout(() => {
-
-    toast.classList.remove("show");
-
-  }, 2200);
-
+    toastEl.classList.remove("show");
+  }, 1800);
 }
 
 
-
 /* =====================================================
-   ICONS
+   STORAGE
 ===================================================== */
 
-function getTypeIcon(type) {
-
-  const icons = {
-
-    note:
-      "fa-regular fa-note-sticky",
-
-    task:
-      "fa-regular fa-square-check",
-
-    link:
-      "fa-solid fa-link",
-
-    folder:
-      "fa-regular fa-folder"
-
-  };
-
-  return icons[type] || icons.note;
-
+function save() {
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify(state)
+  );
 }
 
 
-function getTypeName(type) {
+function load() {
 
-  const names = {
+  try {
 
-    note: "NOTE",
+    const raw = localStorage.getItem(STORAGE_KEY);
 
-    task: "TASK",
+    if (!raw) {
+      createInitialState();
+      return;
+    }
 
-    link: "LINK",
+    const parsed = JSON.parse(raw);
 
-    folder: "FOLDER"
+    if (
+      !parsed ||
+      !Array.isArray(parsed.spaces)
+    ) {
+      createInitialState();
+      return;
+    }
 
-  };
+    state = parsed;
 
-  return names[type] || "BOX";
+    if (!state.counters) {
+      state.counters = {
+        space: 0,
+        box: 0,
+        task: 0
+      };
+    }
 
+    if (!state.activeSpaceId && state.spaces.length) {
+      state.activeSpaceId = state.spaces[0].id;
+    }
+
+  } catch {
+    createInitialState();
+  }
 }
 
+
+function createInitialState() {
+
+  state = {
+    spaces: [],
+    activeSpaceId: null,
+
+    counters: {
+      space: 0,
+      box: 0,
+      task: 0
+    }
+  };
+
+  createSpace("Space 1");
+}
 
 
 /* =====================================================
-   RENDER ALL
+   SPACES
+===================================================== */
+
+function createSpace(name = null) {
+
+  const id = uid("space");
+
+  const space = {
+    id,
+    name: name || `Space ${state.spaces.length + 1}`,
+    boxes: []
+  };
+
+  state.spaces.push(space);
+
+  state.activeSpaceId = id;
+
+  save();
+
+  render();
+
+  return id;
+}
+
+
+function renameSpace(spaceId) {
+
+  const space = getSpace(spaceId);
+
+  if (!space) return;
+
+  const newName = prompt(
+    "Space name:",
+    space.name
+  );
+
+  if (newName === null) return;
+
+  const clean = newName.trim();
+
+  if (!clean) return;
+
+  space.name = clean;
+
+  save();
+
+  render();
+}
+
+
+function requestDeleteSpace(spaceId) {
+
+  const space = getSpace(spaceId);
+
+  if (!space) return;
+
+  if (state.spaces.length <= 1) {
+    showToast("You need at least one Space");
+    return;
+  }
+
+  openConfirm(
+    "Delete Space",
+    `Delete "${space.name}" and all of its boxes?`,
+    () => deleteSpace(spaceId)
+  );
+}
+
+
+function deleteSpace(spaceId) {
+
+  const index = state.spaces.findIndex(
+    space => space.id === spaceId
+  );
+
+  if (index === -1) return;
+
+  state.spaces.splice(index, 1);
+
+  if (state.activeSpaceId === spaceId) {
+
+    const next =
+      state.spaces[index] ||
+      state.spaces[index - 1] ||
+      state.spaces[0];
+
+    state.activeSpaceId = next?.id || null;
+  }
+
+  save();
+
+  render();
+
+  showToast("Space deleted");
+}
+
+
+/* =====================================================
+   BOX
+===================================================== */
+
+const TYPE_CONFIG = {
+
+  text: {
+    icon: "fa-align-left",
+    label: "Text"
+  },
+
+  note: {
+    icon: "fa-note-sticky",
+    label: "Note"
+  },
+
+  task: {
+    icon: "fa-list-check",
+    label: "Task"
+  },
+
+  link: {
+    icon: "fa-link",
+    label: "Link"
+  },
+
+  folder: {
+    icon: "fa-folder",
+    label: "Folder"
+  }
+
+};
+
+
+function addBox(type) {
+
+  const space = activeSpace();
+
+  if (!space) return;
+
+  const box = {
+
+    id: uid("box"),
+
+    type,
+
+    title: "",
+
+    x: 80 + Math.random() * 400,
+
+    y: 80 + Math.random() * 300,
+
+    parentId: null,
+
+    content: "",
+
+    tasks: [],
+
+    url: ""
+
+  };
+
+  space.boxes.push(box);
+
+  save();
+
+  renderSpace(space.id);
+
+  requestAnimationFrame(() => {
+
+    const el = document.getElementById(box.id);
+
+    if (el) {
+
+      el.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+        inline: "center"
+      });
+
+      const title =
+        el.querySelector(".box-title");
+
+      title?.focus();
+    }
+
+  });
+}
+
+
+function requestDeleteBox(spaceId, boxId) {
+
+  openConfirm(
+    "Delete Box",
+    "This box and its content will be permanently removed.",
+    () => deleteBox(spaceId, boxId)
+  );
+}
+
+
+function deleteBox(spaceId, boxId) {
+
+  const space = getSpace(spaceId);
+
+  if (!space) return;
+
+  space.boxes =
+    space.boxes.filter(
+      box => box.id !== boxId
+    );
+
+  /*
+    Remove child relationships.
+  */
+
+  space.boxes.forEach(box => {
+
+    if (box.parentId === boxId) {
+      box.parentId = null;
+    }
+
+  });
+
+  save();
+
+  renderSpace(spaceId);
+
+  showToast("Box deleted");
+}
+
+
+/* =====================================================
+   RENDER
 ===================================================== */
 
 function render() {
 
-  renderSpaces();
+  renderTabs();
 
-  renderBreadcrumb();
-
-  renderBoxes();
-
-  updateFilterButtons();
-
+  renderWorkspace();
 }
 
 
+function renderTabs() {
 
-/* =====================================================
-   RENDER SPACES
-===================================================== */
-
-function renderSpaces() {
-
-  spacesEl.innerHTML = "";
+  tabsEl.innerHTML = "";
 
   state.spaces.forEach(space => {
 
@@ -369,2238 +436,1730 @@ function renderSpaces() {
       document.createElement("div");
 
     tab.className =
-      "space-tab" +
+      "tab" +
       (
         space.id === state.activeSpaceId
           ? " active"
           : ""
       );
 
-    tab.dataset.id = space.id;
+    tab.dataset.spaceId = space.id;
 
     tab.innerHTML = `
 
-      <i class="fa-solid fa-layer-group"></i>
+      <i class="fa-regular fa-window-maximize tab-icon"></i>
 
-      <span class="space-tab-name">
+      <span class="tab-name">
         ${escapeHTML(space.name)}
       </span>
 
-      ${
-        state.spaces.length > 1
-          ? `
-            <span
-              class="space-tab-close"
-              data-close-space="${space.id}"
-            >
-              <i class="fa-solid fa-xmark"></i>
-            </span>
-          `
-          : ""
-      }
+      <div class="tab-actions">
 
-    `;
+        <button
+          class="tab-action"
+          data-action="rename"
+          title="Rename"
+        >
+          <i class="fa-solid fa-pen"></i>
+        </button>
 
-    spacesEl.appendChild(tab);
+        <button
+          class="tab-action"
+          data-action="export"
+          title="Export"
+        >
+          <i class="fa-solid fa-download"></i>
+        </button>
 
-  });
-
-}
-
-
-
-/* =====================================================
-   BREADCRUMB
-===================================================== */
-
-function renderBreadcrumb() {
-
-  const space =
-    getActiveSpace();
-
-  const folder =
-    getCurrentFolder();
-
-  breadcrumbEl.innerHTML = `
-
-    <div class="breadcrumb-item">
-
-      <i class="fa-solid fa-layer-group"></i>
-
-      ${escapeHTML(space?.name || "Space")}
-
-    </div>
-
-  `;
-
-
-  if (folder) {
-
-    breadcrumbEl.innerHTML += `
-
-      <span class="breadcrumb-separator">
-        <i class="fa-solid fa-chevron-left"></i>
-      </span>
-
-      <div class="breadcrumb-item current">
-
-        <i class="fa-regular fa-folder"></i>
-
-        ${escapeHTML(folder.title)}
+        <button
+          class="tab-action delete"
+          data-action="delete"
+          title="Delete"
+        >
+          <i class="fa-solid fa-xmark"></i>
+        </button>
 
       </div>
-
     `;
 
-  }
-
+    tabsEl.appendChild(tab);
+  });
 }
 
 
+function renderWorkspace() {
 
-/* =====================================================
-   GET VISIBLE BOXES
-===================================================== */
+  workspaceEl.innerHTML = "";
 
-function getVisibleBoxes() {
+  state.spaces.forEach(space => {
 
-  const space =
-    getActiveSpace();
+    const spaceEl =
+      document.createElement("section");
 
-  if (!space)
-    return [];
-
-
-  let boxes =
-    space.boxes.filter(
-      box =>
-        box.parentId ===
-        state.currentFolderId
-    );
-
-
-  if (state.filter !== "all") {
-
-    boxes =
-      boxes.filter(
-        box =>
-          box.type === state.filter
+    spaceEl.className =
+      "space" +
+      (
+        space.id === state.activeSpaceId
+          ? " active"
+          : ""
       );
 
-  }
+    spaceEl.id = `space-${space.id}`;
 
+    spaceEl.innerHTML = `
 
-  const search =
-    state.search.trim().toLowerCase();
+      <div class="canvas" data-space="${space.id}">
 
+        <div class="canvas-inner">
 
-  if (search) {
+          ${
+            space.boxes.length
+              ? ""
+              : `
+                <div class="empty">
+                  <div class="empty-icon">
+                    <i class="fa-solid fa-layer-group"></i>
+                  </div>
 
-    boxes =
-      boxes.filter(box => {
+                  <div class="empty-text">
+                    Add a box to start building this Space
+                  </div>
+                </div>
+              `
+          }
 
-        const title =
-          String(box.title || "")
-            .toLowerCase();
+        </div>
 
-        const content =
-          String(box.content || "")
-            .toLowerCase();
+      </div>
+    `;
 
-        return (
-          title.includes(search) ||
-          content.includes(search)
-        );
+    workspaceEl.appendChild(spaceEl);
 
-      });
-
-  }
-
-
-  boxes.sort((a, b) => {
-
-    if (state.sort === "oldest") {
-
-      return a.createdAt - b.createdAt;
-
-    }
-
-
-    if (state.sort === "alphabetical") {
-
-      return String(a.title)
-        .localeCompare(
-          String(b.title),
-          "fa"
-        );
-
-    }
-
-
-    return b.createdAt - a.createdAt;
-
+    renderBoxes(space);
   });
-
-
-  return boxes;
-
 }
 
 
+function renderSpace(spaceId) {
 
-/* =====================================================
-   RENDER BOXES
-===================================================== */
+  const space = getSpace(spaceId);
 
-function renderBoxes() {
+  if (!space) return;
 
-  const boxes =
-    getVisibleBoxes();
-
-  boxesEl.innerHTML = "";
-
-  if (!boxes.length) {
-
-    boxesEl.hidden = true;
-
-    emptyState.hidden = false;
-
-    return;
-
-  }
-
-
-  boxesEl.hidden = false;
-
-  emptyState.hidden = true;
-
-
-  boxes.forEach(box => {
-
-    boxesEl.appendChild(
-      createBoxElement(box)
+  const old =
+    document.getElementById(
+      `space-${spaceId}`
     );
 
-  });
+  if (old) {
+    old.remove();
+  }
 
-}
+  const spaceEl =
+    document.createElement("section");
 
-
-
-/* =====================================================
-   CREATE BOX ELEMENT
-===================================================== */
-
-function createBoxElement(box) {
-
-  const card =
-    document.createElement("article");
-
-  card.className =
-    "box-card" +
+  spaceEl.className =
+    "space" +
     (
-      box.type === "folder"
-        ? " folder-card"
+      space.id === state.activeSpaceId
+        ? " active"
         : ""
     );
 
-  card.dataset.id = box.id;
+  spaceEl.id = `space-${space.id}`;
 
+  spaceEl.innerHTML = `
 
-  if (box.type === "folder") {
+    <div class="canvas" data-space="${space.id}">
 
-    card.innerHTML =
-      renderFolder(box);
-
-  }
-
-  else if (box.type === "note") {
-
-    card.innerHTML =
-      renderNote(box);
-
-  }
-
-  else if (box.type === "task") {
-
-    card.innerHTML =
-      renderTask(box);
-
-  }
-
-  else if (box.type === "link") {
-
-    card.innerHTML =
-      renderLink(box);
-
-  }
-
-
-  return card;
-
-}
-
-
-
-/* =====================================================
-   CARD PARTS
-===================================================== */
-
-function cardTop(type, id) {
-
-  return `
-
-    <div class="card-top">
-
-      <div class="card-type">
-
-        <i class="${getTypeIcon(type)}"></i>
-
-        ${getTypeName(type)}
-
-      </div>
-
-      <button
-        class="card-menu"
-        data-edit="${id}"
-        title="ویرایش"
-      >
-        <i class="fa-solid fa-ellipsis"></i>
-      </button>
-
-    </div>
-
-  `;
-
-}
-
-
-function cardFooter(box) {
-
-  return `
-
-    <div class="card-footer">
-
-      <span>
-        <i class="fa-regular fa-clock"></i>
-        ${formatDate(box.createdAt)}
-      </span>
-
-      <span>
-        ${getTypeName(box.type)}
-      </span>
-
-    </div>
-
-  `;
-
-}
-
-
-
-/* =====================================================
-   NOTE
-===================================================== */
-
-function renderNote(box) {
-
-  const content =
-    escapeHTML(box.content || "")
-      .replace(/\n/g, "<br>");
-
-
-  return `
-
-    ${cardTop("note", box.id)}
-
-    <div class="card-body">
-
-      <h3 class="card-title">
-        ${escapeHTML(box.title)}
-      </h3>
-
-      <div class="note-content">
-        ${truncateHTML(content, 260)}
-      </div>
-
-    </div>
-
-    ${cardFooter(box)}
-
-  `;
-
-}
-
-
-function truncateHTML(html, length) {
-
-  if (html.length <= length)
-    return html;
-
-  return html.slice(0, length) + "…";
-
-}
-
-
-
-/* =====================================================
-   TASK
-===================================================== */
-
-function renderTask(box) {
-
-  const tasks =
-    Array.isArray(box.tasks)
-      ? box.tasks
-      : [];
-
-
-  const visible =
-    tasks.slice(0, 4);
-
-
-  return `
-
-    ${cardTop("task", box.id)}
-
-    <div class="card-body">
-
-      <h3 class="card-title">
-        ${escapeHTML(box.title)}
-      </h3>
-
-      <div class="task-list">
+      <div class="canvas-inner">
 
         ${
-          visible.length
+          space.boxes.length
+            ? ""
+            : `
+              <div class="empty">
 
-          ? visible.map(task => `
+                <div class="empty-icon">
+                  <i class="fa-solid fa-layer-group"></i>
+                </div>
 
-              <label class="task-row ${
-                task.done ? "done" : ""
-              }">
+                <div class="empty-text">
+                  Add a box to start building this Space
+                </div>
 
-                <input
-                  type="checkbox"
-                  data-task="${box.id}"
-                  data-task-id="${task.id}"
-                  ${task.done ? "checked" : ""}
-                >
-
-                <span>
-                  ${escapeHTML(task.text)}
-                </span>
-
-              </label>
-
-          `).join("")
-
-          : `
-            <span class="card-text">
-              هنوز کاری اضافه نشده.
-            </span>
-          `
+              </div>
+            `
         }
 
       </div>
 
     </div>
-
-    ${cardFooter(box)}
-
   `;
 
+  workspaceEl.appendChild(spaceEl);
+
+  renderBoxes(space);
 }
 
 
-
-/* =====================================================
-   LINK
-===================================================== */
-
-function renderLink(box) {
-
-  let hostname = "";
-
-  try {
-
-    hostname =
-      new URL(box.url).hostname;
-
-  } catch {
-
-    hostname =
-      box.url || "";
-
-  }
-
-
-  return `
-
-    ${cardTop("link", box.id)}
-
-    <div class="card-body">
-
-      <h3 class="card-title">
-        ${escapeHTML(box.title)}
-      </h3>
-
-      ${
-        box.description
-          ? `
-            <div class="card-text">
-              ${escapeHTML(
-                truncate(
-                  box.description,
-                  100
-                )
-              )}
-            </div>
-          `
-          : ""
-      }
-
-      <a
-        class="link-preview"
-        href="${escapeHTML(box.url)}"
-        target="_blank"
-        rel="noopener noreferrer"
-        onclick="event.stopPropagation()"
-      >
-
-        <div class="link-preview-icon">
-
-          <i class="fa-solid fa-arrow-up-right-from-square"></i>
-
-        </div>
-
-        <div class="link-url">
-
-          ${escapeHTML(hostname)}
-
-        </div>
-
-      </a>
-
-    </div>
-
-    ${cardFooter(box)}
-
-  `;
-
-}
-
-
-
-/* =====================================================
-   FOLDER
-===================================================== */
-
-function renderFolder(box) {
-
-  const space =
-    getActiveSpace();
-
-  const count =
-    space.boxes.filter(
-      item =>
-        item.parentId === box.id
-    ).length;
-
-
-  return `
-
-    ${cardTop("folder", box.id)}
-
-    <div class="card-body">
-
-      <div class="folder-icon">
-
-        <i class="fa-regular fa-folder"></i>
-
-      </div>
-
-      <div>
-
-        <h3 class="card-title">
-
-          ${escapeHTML(box.title)}
-
-        </h3>
-
-        <div class="folder-count">
-
-          ${count} item${count !== 1 ? "s" : ""}
-
-        </div>
-
-      </div>
-
-    </div>
-
-    ${cardFooter(box)}
-
-  `;
-
-}
-
-
-
-/* =====================================================
-   MODALS
-===================================================== */
-
-function openModal(modal) {
-
-  modal.hidden = false;
-
-  document.body.style.overflow =
-    "hidden";
-
-}
-
-
-function closeModal(modal) {
-
-  modal.hidden = true;
-
-  document.body.style.overflow =
-    "";
-
-}
-
-
-function closeAllModals() {
-
-  [
-    boxModal,
-    spaceModal,
-    editModal
-  ].forEach(modal => {
-
-    modal.hidden = true;
+function renderBoxes(space) {
+
+  const inner =
+    document.querySelector(
+      `#space-${space.id} .canvas-inner`
+    );
+
+  if (!inner) return;
+
+  space.boxes.forEach(box => {
+
+    inner.appendChild(
+      createBoxElement(
+        space,
+        box
+      )
+    );
 
   });
 
-  document.body.style.overflow =
-    "";
-
+  updateAllParents(space.id);
 }
-
-
-
-/* =====================================================
-   BOX FORM
-===================================================== */
-
-function renderBoxFields(
-  type = selectedType,
-  data = {}
-) {
-
-  if (type === "note") {
-
-    formFields.innerHTML = `
-
-      <label class="field">
-
-        <span>عنوان</span>
-
-        <input
-          name="title"
-          type="text"
-          maxlength="100"
-          placeholder="عنوان یادداشت"
-          value="${escapeHTML(
-            data.title || ""
-          )}"
-          required
-        >
-
-      </label>
-
-
-      <label class="field">
-
-        <span>متن</span>
-
-        <textarea
-          name="content"
-          placeholder="هر چیزی که می‌خوای اینجا بنویس..."
-        >${escapeHTML(
-          data.content || ""
-        )}</textarea>
-
-      </label>
-
-    `;
-
-  }
-
-
-  else if (type === "task") {
-
-    const tasks =
-      data.tasks || [
-        {
-          text: "",
-          done: false
-        }
-      ];
-
-
-    formFields.innerHTML = `
-
-      <label class="field">
-
-        <span>عنوان لیست</span>
-
-        <input
-          name="title"
-          type="text"
-          maxlength="100"
-          placeholder="مثلاً کارهای امروز"
-          value="${escapeHTML(
-            data.title || ""
-          )}"
-          required
-        >
-
-      </label>
-
-
-      <label class="field">
-
-        <span>کارها</span>
-
-        <textarea
-          name="tasks"
-          placeholder="هر کار را در یک خط بنویس..."
-        >${escapeHTML(
-          tasks
-            .map(t => t.text || "")
-            .join("\n")
-        )}</textarea>
-
-      </label>
-
-      <div class="form-hint">
-        هر خط تبدیل به یک Task جدا می‌شود.
-      </div>
-
-    `;
-
-  }
-
-
-  else if (type === "link") {
-
-    formFields.innerHTML = `
-
-      <label class="field">
-
-        <span>عنوان</span>
-
-        <input
-          name="title"
-          type="text"
-          maxlength="100"
-          placeholder="عنوان لینک"
-          value="${escapeHTML(
-            data.title || ""
-          )}"
-          required
-        >
-
-      </label>
-
-
-      <label class="field">
-
-        <span>آدرس</span>
-
-        <input
-          name="url"
-          type="url"
-          placeholder="https://example.com"
-          value="${escapeHTML(
-            data.url || ""
-          )}"
-          required
-        >
-
-      </label>
-
-
-      <label class="field">
-
-        <span>توضیح کوتاه</span>
-
-        <textarea
-          name="description"
-          placeholder="اختیاری..."
-        >${escapeHTML(
-          data.description || ""
-        )}</textarea>
-
-      </label>
-
-    `;
-
-  }
-
-
-  else if (type === "folder") {
-
-    formFields.innerHTML = `
-
-      <label class="field">
-
-        <span>نام پوشه</span>
-
-        <input
-          name="title"
-          type="text"
-          maxlength="80"
-          placeholder="مثلاً پروژه‌ها"
-          value="${escapeHTML(
-            data.title || ""
-          )}"
-          required
-        >
-
-      </label>
-
-
-      <div class="form-hint">
-        بعد از ساخت پوشه، می‌تونی باکس‌ها رو داخلش قرار بدی.
-      </div>
-
-    `;
-
-  }
-
-}
-
-
-
-/* =====================================================
-   OPEN CREATE BOX
-===================================================== */
-
-function openCreateBox(type = "note") {
-
-  selectedType = type;
-
-  document
-    .querySelectorAll(".type-card")
-    .forEach(card => {
-
-      card.classList.toggle(
-        "selected",
-        card.dataset.type === type
-      );
-
-    });
-
-
-  renderBoxFields(type);
-
-  openModal(boxModal);
-
-}
-
 
 
 /* =====================================================
    CREATE BOX
 ===================================================== */
 
-boxForm.addEventListener(
-  "submit",
-  event => {
+function createBoxElement(space, box) {
 
-    event.preventDefault();
+  const el =
+    document.createElement("article");
 
-    const space =
-      getActiveSpace();
-
-    if (!space)
-      return;
-
-
-    const form =
-      new FormData(boxForm);
-
-    const title =
-      String(
-        form.get("title") || ""
-      ).trim();
-
-
-    if (!title)
-      return;
-
-
-    const box = {
-
-      id: createId(),
-
-      type: selectedType,
-
-      title,
-
-      parentId:
-        state.currentFolderId,
-
-      createdAt:
-        Date.now()
-
-    };
-
-
-    if (selectedType === "note") {
-
-      box.content =
-        String(
-          form.get("content") || ""
-        ).trim();
-
-    }
-
-
-    if (selectedType === "task") {
-
-      const raw =
-        String(
-          form.get("tasks") || ""
-        );
-
-      box.tasks =
-        raw
-          .split("\n")
-          .map(text => text.trim())
-          .filter(Boolean)
-          .map(text => ({
-
-            id: createId(),
-
-            text,
-
-            done: false
-
-          }));
-
-    }
-
-
-    if (selectedType === "link") {
-
-      box.url =
-        String(
-          form.get("url") || ""
-        ).trim();
-
-      box.description =
-        String(
-          form.get("description") || ""
-        ).trim();
-
-    }
-
-
-    space.boxes.push(box);
-
-    saveState();
-
-    render();
-
-    closeModal(boxModal);
-
-    boxForm.reset();
-
-    showToast("باکس ساخته شد");
-
-  }
-);
-
-
-
-/* =====================================================
-   TYPE SELECTOR
-===================================================== */
-
-document
-  .querySelectorAll(".type-card")
-  .forEach(card => {
-
-    card.addEventListener(
-      "click",
-      () => {
-
-        selectedType =
-          card.dataset.type;
-
-        document
-          .querySelectorAll(".type-card")
-          .forEach(item => {
-
-            item.classList.toggle(
-              "selected",
-              item === card
-            );
-
-          });
-
-
-        renderBoxFields(
-          selectedType
-        );
-
-      }
+  el.className =
+    "box" +
+    (
+      box.type === "folder"
+        ? " folder"
+        : ""
     );
 
-  });
+  el.id = box.id;
 
+  el.style.left = `${box.x}px`;
+  el.style.top = `${box.y}px`;
 
+  const config =
+    TYPE_CONFIG[box.type] ||
+    TYPE_CONFIG.text;
 
-/* =====================================================
-   SPACE
-===================================================== */
 
-function openSpaceModal() {
+  let body = "";
 
-  document
-    .getElementById("spaceName")
-    .value = "";
 
-  openModal(spaceModal);
+  /* TEXT */
 
-}
+  if (box.type === "text") {
 
+    body = `
 
-spaceForm.addEventListener(
-  "submit",
-  event => {
+      <div class="box-body">
 
-    event.preventDefault();
+        <div
+          class="editor"
+          contenteditable="true"
+          data-editor="text"
+        >${box.content || ""}</div>
 
-    const input =
-      document.getElementById(
-        "spaceName"
-      );
+      </div>
 
-    const name =
-      input.value.trim();
+      <div class="toolbar">
 
-    if (!name)
-      return;
+        <button class="tool-btn" data-format="bold">
+          <i class="fa-solid fa-bold"></i>
+        </button>
 
+        <button class="tool-btn" data-format="italic">
+          <i class="fa-solid fa-italic"></i>
+        </button>
 
-    const space = {
+        <button class="tool-btn" data-format="insertUnorderedList">
+          <i class="fa-solid fa-list-ul"></i>
+        </button>
 
-      id: createId(),
+        <button class="tool-btn" data-link>
+          <i class="fa-solid fa-link"></i>
+        </button>
 
-      name,
-
-      boxes: []
-
-    };
-
-
-    state.spaces.push(space);
-
-    state.activeSpaceId =
-      space.id;
-
-    state.currentFolderId =
-      null;
-
-    state.filter =
-      "all";
-
-    saveState();
-
-    render();
-
-    closeModal(spaceModal);
-
-    showToast("Space جدید ساخته شد");
-
-  }
-);
-
-
-
-/* =====================================================
-   SPACE CLICK
-===================================================== */
-
-spacesEl.addEventListener(
-  "click",
-  event => {
-
-    const close =
-      event.target.closest(
-        "[data-close-space]"
-      );
-
-
-    if (close) {
-
-      event.stopPropagation();
-
-      deleteSpace(
-        close.dataset.closeSpace
-      );
-
-      return;
-
-    }
-
-
-    const tab =
-      event.target.closest(
-        ".space-tab"
-      );
-
-
-    if (!tab)
-      return;
-
-
-    state.activeSpaceId =
-      tab.dataset.id;
-
-    state.currentFolderId =
-      null;
-
-    state.filter =
-      "all";
-
-    state.search =
-      "";
-
-    saveState();
-
-    render();
-
-  }
-);
-
-
-
-/* =====================================================
-   DELETE SPACE
-===================================================== */
-
-function deleteSpace(id) {
-
-  if (state.spaces.length <= 1) {
-
-    showToast(
-      "حداقل یک Space باید وجود داشته باشه"
-    );
-
-    return;
-
-  }
-
-
-  const space =
-    state.spaces.find(
-      s => s.id === id
-    );
-
-
-  if (!space)
-    return;
-
-
-  const confirmed =
-    confirm(
-      `Space «${space.name}» حذف بشه؟`
-    );
-
-
-  if (!confirmed)
-    return;
-
-
-  state.spaces =
-    state.spaces.filter(
-      s => s.id !== id
-    );
-
-
-  if (state.activeSpaceId === id) {
-
-    state.activeSpaceId =
-      state.spaces[0].id;
-
-  }
-
-
-  state.currentFolderId =
-    null;
-
-  saveState();
-
-  render();
-
-  showToast("Space حذف شد");
-
-}
-
-
-
-/* =====================================================
-   CARD CLICK
-===================================================== */
-
-boxesEl.addEventListener(
-  "click",
-  event => {
-
-    const edit =
-      event.target.closest(
-        "[data-edit]"
-      );
-
-
-    if (edit) {
-
-      event.stopPropagation();
-
-      openEditModal(
-        edit.dataset.edit
-      );
-
-      return;
-
-    }
-
-
-    const folder =
-      event.target.closest(
-        ".folder-card"
-      );
-
-
-    if (folder) {
-
-      const space =
-        getActiveSpace();
-
-      const box =
-        space.boxes.find(
-          b => b.id === folder.dataset.id
-        );
-
-
-      if (!box)
-        return;
-
-
-      state.currentFolderId =
-        box.id;
-
-      state.filter =
-        "all";
-
-      saveState();
-
-      render();
-
-    }
-
-  }
-);
-
-
-
-/* =====================================================
-   TASK CLICK
-===================================================== */
-
-boxesEl.addEventListener(
-  "change",
-  event => {
-
-    const checkbox =
-      event.target.closest(
-        "[data-task]"
-      );
-
-
-    if (!checkbox)
-      return;
-
-
-    const space =
-      getActiveSpace();
-
-
-    const box =
-      space.boxes.find(
-        b =>
-          b.id === checkbox.dataset.task
-      );
-
-
-    if (!box)
-      return;
-
-
-    const task =
-      box.tasks.find(
-        t =>
-          t.id ===
-          checkbox.dataset.taskId
-      );
-
-
-    if (!task)
-      return;
-
-
-    task.done =
-      checkbox.checked;
-
-
-    saveState();
-
-    render();
-
-  }
-);
-
-
-
-/* =====================================================
-   EDIT MODAL
-===================================================== */
-
-function openEditModal(id) {
-
-  const space =
-    getActiveSpace();
-
-
-  const box =
-    space.boxes.find(
-      b => b.id === id
-    );
-
-
-  if (!box)
-    return;
-
-
-  editingBoxId = id;
-
-
-  renderEditFields(box);
-
-  openModal(editModal);
-
-}
-
-
-function renderEditFields(box) {
-
-  if (box.type === "note") {
-
-    editFields.innerHTML = `
-
-      <label class="field">
-
-        <span>عنوان</span>
-
-        <input
-          name="title"
-          value="${escapeHTML(box.title)}"
-          required
-        >
-
-      </label>
-
-
-      <label class="field">
-
-        <span>متن</span>
-
-        <textarea name="content">${escapeHTML(
-          box.content || ""
-        )}</textarea>
-
-      </label>
-
+      </div>
     `;
-
   }
 
+
+  /* NOTE */
+
+  else if (box.type === "note") {
+
+    body = `
+
+      <div class="box-body">
+
+        <div
+          class="note-editor"
+          contenteditable="true"
+          data-editor="note"
+        >${escapeHTML(box.content || "")}</div>
+
+      </div>
+    `;
+  }
+
+
+  /* TASK */
 
   else if (box.type === "task") {
 
-    editFields.innerHTML = `
+    body = `
 
-      <label class="field">
+      <div class="box-body">
 
-        <span>عنوان</span>
+        <div class="task-list"></div>
 
-        <input
-          name="title"
-          value="${escapeHTML(box.title)}"
-          required
-        >
+        <button class="add-task">
+          <i class="fa-solid fa-plus"></i>
+          Add task
+        </button>
 
-      </label>
-
-
-      <label class="field">
-
-        <span>کارها</span>
-
-        <textarea name="tasks">${escapeHTML(
-          (box.tasks || [])
-            .map(task => task.text)
-            .join("\n")
-        )}</textarea>
-
-      </label>
-
+      </div>
     `;
-
   }
 
+
+  /* LINK */
 
   else if (box.type === "link") {
 
-    editFields.innerHTML = `
+    body = `
 
-      <label class="field">
+      <div class="box-body">
 
-        <span>عنوان</span>
+        <div class="link-row">
 
-        <input
-          name="title"
-          value="${escapeHTML(box.title)}"
-          required
-        >
+          <input
+            class="link-input"
+            type="url"
+            placeholder="https://example.com"
+            value="${escapeHTML(box.url || "")}"
+          >
 
-      </label>
+          <button class="link-go">
+            <i class="fa-solid fa-arrow-up-right-from-square"></i>
+          </button>
 
+        </div>
 
-      <label class="field">
+        <div class="link-result"></div>
 
-        <span>آدرس</span>
-
-        <input
-          name="url"
-          type="url"
-          value="${escapeHTML(box.url || "")}"
-          required
-        >
-
-      </label>
-
-
-      <label class="field">
-
-        <span>توضیح</span>
-
-        <textarea name="description">${escapeHTML(
-          box.description || ""
-        )}</textarea>
-
-      </label>
-
+      </div>
     `;
-
   }
 
+
+  /* FOLDER */
 
   else if (box.type === "folder") {
 
-    editFields.innerHTML = `
+    body = `
 
-      <label class="field">
-
-        <span>نام پوشه</span>
-
-        <input
-          name="title"
-          value="${escapeHTML(box.title)}"
-          required
-        >
-
-      </label>
-
+      <div
+        class="folder-children"
+        data-children
+      ></div>
     `;
-
   }
 
+
+  const parentSelector =
+    box.type !== "folder"
+      ? `
+
+        <div class="parent-row">
+
+          <span>Folder</span>
+
+          <select class="parent-select">
+
+            <option value="">
+              No folder
+            </option>
+
+          </select>
+
+        </div>
+      `
+      : "";
+
+
+  el.innerHTML = `
+
+    <div class="box-header">
+
+      <div class="box-type">
+
+        <i class="fa-solid ${config.icon}"></i>
+
+      </div>
+
+      <div
+        class="box-title"
+        contenteditable="true"
+      >${escapeHTML(box.title || "")}</div>
+
+      <div class="box-actions">
+
+        <button
+          class="box-btn delete"
+          title="Delete"
+        >
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+
+      </div>
+
+    </div>
+
+    ${body}
+
+    ${parentSelector}
+  `;
+
+
+  bindBoxEvents(
+    el,
+    space,
+    box
+  );
+
+
+  if (box.type === "task") {
+    renderTasks(el, box);
+  }
+
+  if (box.type === "link" && box.url) {
+    renderLink(el, box);
+  }
+
+
+  return el;
 }
 
 
-
 /* =====================================================
-   SAVE EDIT
+   BOX EVENTS
 ===================================================== */
 
-editForm.addEventListener(
-  "submit",
-  event => {
+function bindBoxEvents(el, space, box) {
 
-    event.preventDefault();
+  const title =
+    el.querySelector(".box-title");
 
-
-    const space =
-      getActiveSpace();
+  const header =
+    el.querySelector(".box-header");
 
 
-    const box =
-      space.boxes.find(
-        b => b.id === editingBoxId
-      );
+  /* TITLE */
 
-
-    if (!box)
-      return;
-
-
-    const form =
-      new FormData(editForm);
-
-
-    box.title =
-      String(
-        form.get("title") || ""
-      ).trim();
-
-
-    if (box.type === "note") {
-
-      box.content =
-        String(
-          form.get("content") || ""
-        ).trim();
-
-    }
-
-
-    if (box.type === "link") {
-
-      box.url =
-        String(
-          form.get("url") || ""
-        ).trim();
-
-      box.description =
-        String(
-          form.get("description") || ""
-        ).trim();
-
-    }
-
-
-    if (box.type === "task") {
-
-      const oldTasks =
-        box.tasks || [];
-
-
-      const texts =
-        String(
-          form.get("tasks") || ""
-        )
-          .split("\n")
-          .map(x => x.trim())
-          .filter(Boolean);
-
-
-      box.tasks =
-        texts.map((text, index) => ({
-
-          id:
-            oldTasks[index]?.id ||
-            createId(),
-
-          text,
-
-          done:
-            oldTasks[index]?.done ||
-            false
-
-        }));
-
-    }
-
-
-    saveState();
-
-    render();
-
-    closeModal(editModal);
-
-    showToast("تغییرات ذخیره شد");
-
-  }
-);
-
-
-
-/* =====================================================
-   DELETE EDITED BOX
-===================================================== */
-
-document
-  .getElementById("deleteEditBtn")
-  .addEventListener(
-    "click",
+  title.addEventListener(
+    "input",
     () => {
 
-      const space =
-        getActiveSpace();
+      box.title =
+        title.textContent;
 
+      save();
 
-      const box =
-        space.boxes.find(
-          b => b.id === editingBoxId
-        );
-
-
-      if (!box)
-        return;
-
-
-      const confirmed =
-        confirm(
-          `«${box.title}» حذف بشه؟`
-        );
-
-
-      if (!confirmed)
-        return;
-
-
-      deleteBox(
-        editingBoxId
+      updateAllParents(
+        space.id
       );
-
-      closeModal(editModal);
-
     }
   );
 
 
+  /* DELETE */
+
+  el.querySelector(
+    ".box-btn.delete"
+  )?.addEventListener(
+    "click",
+    event => {
+
+      event.stopPropagation();
+
+      requestDeleteBox(
+        space.id,
+        box.id
+      );
+    }
+  );
+
+
+  /* TEXT EDITOR */
+
+  const editor =
+    el.querySelector(
+      '[data-editor="text"]'
+    );
+
+  if (editor) {
+
+    editor.addEventListener(
+      "input",
+      () => {
+
+        box.content =
+          editor.innerHTML;
+
+        save();
+      }
+    );
+
+    el.querySelectorAll(
+      "[data-format]"
+    ).forEach(button => {
+
+      button.addEventListener(
+        "mousedown",
+        event => {
+          event.preventDefault();
+        }
+      );
+
+      button.addEventListener(
+        "click",
+        () => {
+
+          document.execCommand(
+            button.dataset.format,
+            false,
+            null
+          );
+
+          editor.focus();
+
+          box.content =
+            editor.innerHTML;
+
+          save();
+        }
+      );
+
+    });
+
+
+    el.querySelector(
+      "[data-link]"
+    )?.addEventListener(
+      "click",
+      () => {
+
+        const url =
+          prompt("Link URL:");
+
+        if (!url) return;
+
+        document.execCommand(
+          "createLink",
+          false,
+          url
+        );
+
+        box.content =
+          editor.innerHTML;
+
+        save();
+      }
+    );
+  }
+
+
+  /* NOTE */
+
+  const note =
+    el.querySelector(
+      '[data-editor="note"]'
+    );
+
+  if (note) {
+
+    note.addEventListener(
+      "input",
+      () => {
+
+        box.content =
+          note.textContent;
+
+        save();
+      }
+    );
+  }
+
+
+  /* TASK */
+
+  el.querySelector(
+    ".add-task"
+  )?.addEventListener(
+    "click",
+    () => {
+
+      addTask(
+        space.id,
+        box.id
+      );
+    }
+  );
+
+
+  /* LINK */
+
+  const linkInput =
+    el.querySelector(
+      ".link-input"
+    );
+
+  const linkGo =
+    el.querySelector(
+      ".link-go"
+    );
+
+  if (linkInput) {
+
+    linkInput.addEventListener(
+      "input",
+      () => {
+
+        box.url =
+          linkInput.value.trim();
+
+        save();
+      }
+    );
+
+    linkInput.addEventListener(
+      "keydown",
+      event => {
+
+        if (event.key === "Enter") {
+          renderLink(el, box);
+        }
+
+      }
+    );
+
+    linkGo.addEventListener(
+      "click",
+      () => {
+
+        box.url =
+          linkInput.value.trim();
+
+        save();
+
+        renderLink(
+          el,
+          box
+        );
+      }
+    );
+  }
+
+
+  /* PARENT */
+
+  const select =
+    el.querySelector(
+      ".parent-select"
+    );
+
+  if (select) {
+
+    select.addEventListener(
+      "change",
+      () => {
+
+        box.parentId =
+          select.value || null;
+
+        save();
+
+        updateAllParents(
+          space.id
+        );
+      }
+    );
+  }
+
+
+  /* DRAG */
+
+  header.addEventListener(
+    "mousedown",
+    event => {
+
+      if (
+        event.target.closest(
+          ".box-title,.box-actions"
+        )
+      ) {
+        return;
+      }
+
+      startDrag(
+        event,
+        el,
+        space,
+        box
+      );
+    }
+  );
+
+
+  header.addEventListener(
+    "touchstart",
+    event => {
+
+      if (
+        event.target.closest(
+          ".box-title,.box-actions"
+        )
+      ) {
+        return;
+      }
+
+      startDrag(
+        event.touches[0],
+        el,
+        space,
+        box
+      );
+
+    },
+    {
+      passive: true
+    }
+  );
+}
+
 
 /* =====================================================
-   DELETE BOX
+   TASKS
 ===================================================== */
 
-function deleteBox(id) {
+function renderTasks(el, box) {
+
+  const list =
+    el.querySelector(
+      ".task-list"
+    );
+
+  list.innerHTML = "";
+
+  box.tasks ||= [];
+
+  box.tasks.forEach(task => {
+
+    const item =
+      document.createElement("div");
+
+    item.className = "task";
+
+    item.dataset.id =
+      task.id;
+
+    item.innerHTML = `
+
+      <button class="task-check">
+
+        ${
+          task.done
+            ? '<i class="fa-solid fa-check"></i>'
+            : ""
+        }
+
+      </button>
+
+      <div
+        class="task-text ${task.done ? "done" : ""}"
+        contenteditable="true"
+      >${escapeHTML(task.text || "")}</div>
+
+      <button class="task-remove">
+
+        <i class="fa-solid fa-xmark"></i>
+
+      </button>
+    `;
+
+
+    const check =
+      item.querySelector(
+        ".task-check"
+      );
+
+    const text =
+      item.querySelector(
+        ".task-text"
+      );
+
+    const remove =
+      item.querySelector(
+        ".task-remove"
+      );
+
+
+    check.addEventListener(
+      "click",
+      () => {
+
+        task.done =
+          !task.done;
+
+        check.classList.toggle(
+          "checked",
+          task.done
+        );
+
+        check.innerHTML =
+          task.done
+            ? '<i class="fa-solid fa-check"></i>'
+            : "";
+
+        text.classList.toggle(
+          "done",
+          task.done
+        );
+
+        save();
+      }
+    );
+
+
+    text.addEventListener(
+      "input",
+      () => {
+
+        task.text =
+          text.textContent;
+
+        save();
+      }
+    );
+
+
+    remove.addEventListener(
+      "click",
+      () => {
+
+        box.tasks =
+          box.tasks.filter(
+            t => t.id !== task.id
+          );
+
+        save();
+
+        renderTasks(
+          el,
+          box
+        );
+      }
+    );
+
+
+    list.appendChild(item);
+  });
+}
+
+
+function addTask(spaceId, boxId) {
+
+  const box =
+    getBox(
+      spaceId,
+      boxId
+    );
+
+  if (!box) return;
+
+  box.tasks ||= [];
+
+  box.tasks.push({
+
+    id: uid("task"),
+
+    text: "",
+
+    done: false
+  });
+
+  save();
+
+  const el =
+    document.getElementById(
+      boxId
+    );
+
+  if (el) {
+
+    renderTasks(
+      el,
+      box
+    );
+
+    const last =
+      el.querySelector(
+        ".task-list .task:last-child .task-text"
+      );
+
+    last?.focus();
+  }
+}
+
+
+/* =====================================================
+   LINK
+===================================================== */
+
+function renderLink(el, box) {
+
+  const result =
+    el.querySelector(
+      ".link-result"
+    );
+
+  if (!result) return;
+
+  const url =
+    (box.url || "").trim();
+
+  if (!url) {
+
+    result.innerHTML = "";
+
+    return;
+  }
+
+
+  let parsed;
+
+  try {
+    parsed = new URL(url);
+  } catch {
+
+    result.innerHTML = "";
+
+    showToast("Invalid URL");
+
+    return;
+  }
+
+
+  /* YOUTUBE */
+
+  const youtube =
+    url.match(
+      /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?/]+)/i
+    );
+
+  if (youtube) {
+
+    result.innerHTML = `
+
+      <div class="embed">
+
+        <iframe
+          src="https://www.youtube.com/embed/${encodeURIComponent(youtube[1])}"
+          allowfullscreen
+        ></iframe>
+
+      </div>
+    `;
+
+    return;
+  }
+
+
+  /* VIMEO */
+
+  const vimeo =
+    url.match(
+      /vimeo\.com\/(\d+)/i
+    );
+
+  if (vimeo) {
+
+    result.innerHTML = `
+
+      <div class="embed">
+
+        <iframe
+          src="https://player.vimeo.com/video/${vimeo[1]}"
+          allowfullscreen
+        ></iframe>
+
+      </div>
+    `;
+
+    return;
+  }
+
+
+  /* NORMAL */
+
+  const domain =
+    parsed.hostname.replace(
+      /^www\./,
+      ""
+    );
+
+
+  result.innerHTML = `
+
+    <a
+      class="link-preview"
+      href="${escapeHTML(url)}"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+
+      <div class="link-preview-icon">
+
+        <i class="fa-solid fa-arrow-up-right-from-square"></i>
+
+      </div>
+
+      <div>
+
+        <div class="link-domain">
+          ${escapeHTML(domain)}
+        </div>
+
+        <div class="link-url">
+          ${escapeHTML(url)}
+        </div>
+
+      </div>
+
+    </a>
+  `;
+}
+
+
+/* =====================================================
+   PARENT / FOLDER
+===================================================== */
+
+function updateAllParents(spaceId) {
 
   const space =
-    getActiveSpace();
+    getSpace(spaceId);
+
+  if (!space) return;
+
+
+  const folders =
+    space.boxes.filter(
+      box => box.type === "folder"
+    );
+
+
+  space.boxes.forEach(box => {
+
+    if (box.type === "folder") {
+
+      renderFolderChildren(
+        space,
+        box
+      );
+
+      return;
+    }
+
+
+    const el =
+      document.getElementById(
+        box.id
+      );
+
+    if (!el) return;
+
+
+    const select =
+      el.querySelector(
+        ".parent-select"
+      );
+
+    if (!select) return;
+
+
+    select.innerHTML =
+      `<option value="">No folder</option>`;
+
+
+    folders.forEach(folder => {
+
+      const option =
+        document.createElement(
+          "option"
+        );
+
+      option.value =
+        folder.id;
+
+      option.textContent =
+        folder.title.trim() ||
+        "Untitled folder";
+
+      option.selected =
+        box.parentId === folder.id;
+
+      select.appendChild(
+        option
+      );
+    });
+  });
+}
+
+
+function renderFolderChildren(
+  space,
+  folder
+) {
+
+  const el =
+    document.getElementById(
+      folder.id
+    );
+
+  if (!el) return;
+
+  const container =
+    el.querySelector(
+      "[data-children]"
+    );
+
+  if (!container) return;
 
 
   const children =
     space.boxes.filter(
       box =>
-        box.parentId === id
+        box.parentId === folder.id
     );
 
 
-  children.forEach(child => {
+  if (!children.length) {
 
-    child.parentId =
-      state.currentFolderId;
+    container.innerHTML = `
 
-  });
+      <span class="no-children">
+        Empty folder
+      </span>
+    `;
 
-
-  space.boxes =
-    space.boxes.filter(
-      box =>
-        box.id !== id
-    );
-
-
-  if (state.currentFolderId === id) {
-
-    state.currentFolderId =
-      null;
-
+    return;
   }
 
 
-  saveState();
+  container.innerHTML =
+    children.map(
+      child => `
 
-  render();
+        <span class="child-tag">
 
-  showToast("باکس حذف شد");
+          <i class="fa-solid ${
+            TYPE_CONFIG[child.type]?.icon ||
+            "fa-square"
+          }"></i>
 
+          ${escapeHTML(
+            child.title.trim() ||
+            TYPE_CONFIG[child.type]?.label ||
+            "Box"
+          )}
+
+        </span>
+      `
+    ).join("");
 }
 
 
-
 /* =====================================================
-   FILTERS
+   DRAGGING
 ===================================================== */
 
-document
-  .querySelectorAll(".filter")
-  .forEach(button => {
+function startDrag(
+  event,
+  el,
+  space,
+  box
+) {
 
-    button.addEventListener(
-      "click",
-      () => {
+  const canvas =
+    el.closest(".canvas");
 
-        state.filter =
-          button.dataset.filter;
+  if (!canvas) return;
 
-        saveState();
+  const rect =
+    canvas.getBoundingClientRect();
 
-        render();
 
+  dragState = {
+
+    el,
+
+    space,
+
+    box,
+
+    canvas,
+
+    offsetX:
+      event.clientX -
+      rect.left -
+      box.x +
+      canvas.scrollLeft,
+
+    offsetY:
+      event.clientY -
+      rect.top -
+      box.y +
+      canvas.scrollTop,
+
+    children: []
+  };
+
+
+  if (box.type === "folder") {
+
+    dragState.children =
+      space.boxes
+        .filter(
+          child =>
+            child.parentId === box.id
+        )
+        .map(
+          child => ({
+            box: child,
+
+            dx:
+              child.x - box.x,
+
+            dy:
+              child.y - box.y
+          })
+        );
+  }
+
+
+  el.classList.add("dragging");
+
+
+  document.addEventListener(
+    "mousemove",
+    dragMove
+  );
+
+  document.addEventListener(
+    "mouseup",
+    endDrag
+  );
+
+  document.addEventListener(
+    "touchmove",
+    touchDragMove,
+    {
+      passive: false
+    }
+  );
+
+  document.addEventListener(
+    "touchend",
+    endDrag
+  );
+}
+
+
+function dragMove(event) {
+
+  moveBox(
+    event.clientX,
+    event.clientY
+  );
+}
+
+
+function touchDragMove(event) {
+
+  if (!dragState) return;
+
+  event.preventDefault();
+
+  const touch =
+    event.touches[0];
+
+  moveBox(
+    touch.clientX,
+    touch.clientY
+  );
+}
+
+
+function moveBox(
+  clientX,
+  clientY
+) {
+
+  if (!dragState) return;
+
+  const {
+    el,
+    box,
+    canvas,
+    offsetX,
+    offsetY,
+    children
+  } = dragState;
+
+
+  const rect =
+    canvas.getBoundingClientRect();
+
+
+  box.x =
+    Math.max(
+      0,
+      clientX -
+      rect.left -
+      offsetX +
+      canvas.scrollLeft
+    );
+
+
+  box.y =
+    Math.max(
+      0,
+      clientY -
+      rect.top -
+      offsetY +
+      canvas.scrollTop
+    );
+
+
+  el.style.left =
+    `${box.x}px`;
+
+  el.style.top =
+    `${box.y}px`;
+
+
+  children.forEach(
+    child => {
+
+      child.box.x =
+        box.x +
+        child.dx;
+
+      child.box.y =
+        box.y +
+        child.dy;
+
+
+      const childEl =
+        document.getElementById(
+          child.box.id
+        );
+
+      if (childEl) {
+
+        childEl.style.left =
+          `${child.box.x}px`;
+
+        childEl.style.top =
+          `${child.box.y}px`;
       }
-    );
 
-  });
-
-
-function updateFilterButtons() {
-
-  document
-    .querySelectorAll(".filter")
-    .forEach(button => {
-
-      button.classList.toggle(
-        "active",
-        button.dataset.filter ===
-          state.filter
-      );
-
-    });
-
+    }
+  );
 }
 
 
+function endDrag() {
 
-/* =====================================================
-   SORT
-===================================================== */
+  if (!dragState) return;
 
-document
-  .getElementById("sortBtn")
-  .addEventListener(
-    "click",
-    () => {
-
-      const modes = [
-        "newest",
-        "oldest",
-        "alphabetical"
-      ];
-
-
-      const current =
-        modes.indexOf(state.sort);
-
-
-      state.sort =
-        modes[
-          (current + 1) %
-          modes.length
-        ];
-
-
-      const names = {
-
-        newest:
-          "جدیدترین",
-
-        oldest:
-          "قدیمی‌ترین",
-
-        alphabetical:
-          "الفبایی"
-
-      };
-
-
-      saveState();
-
-      render();
-
-      showToast(
-        `مرتب‌سازی: ${names[state.sort]}`
-      );
-
-    }
+  dragState.el.classList.remove(
+    "dragging"
   );
 
+  save();
 
-
-/* =====================================================
-   SEARCH
-===================================================== */
-
-function openSearch() {
-
-  searchPanel.classList.add("open");
-
-  setTimeout(
-    () =>
-      searchInput.focus(),
-    100
+  updateAllParents(
+    dragState.space.id
   );
 
+  dragState = null;
+
+
+  document.removeEventListener(
+    "mousemove",
+    dragMove
+  );
+
+  document.removeEventListener(
+    "mouseup",
+    endDrag
+  );
+
+  document.removeEventListener(
+    "touchmove",
+    touchDragMove
+  );
+
+  document.removeEventListener(
+    "touchend",
+    endDrag
+  );
 }
-
-
-function closeSearch() {
-
-  searchPanel.classList.remove("open");
-
-  searchInput.value =
-    state.search;
-
-}
-
-
-document
-  .getElementById("searchBtn")
-  .addEventListener(
-    "click",
-    openSearch
-  );
-
-
-document
-  .getElementById("closeSearch")
-  .addEventListener(
-    "click",
-    closeSearch
-  );
-
-
-searchInput.addEventListener(
-  "input",
-  () => {
-
-    state.search =
-      searchInput.value;
-
-    render();
-
-  }
-);
-
-
-document.addEventListener(
-  "keydown",
-  event => {
-
-    if (
-      event.key === "/" &&
-      document.activeElement.tagName !==
-        "INPUT" &&
-      document.activeElement.tagName !==
-        "TEXTAREA"
-    ) {
-
-      event.preventDefault();
-
-      openSearch();
-
-    }
-
-
-    if (event.key === "Escape") {
-
-      closeSearch();
-
-      closeAllModals();
-
-    }
-
-  }
-);
-
-
-
-/* =====================================================
-   ADD BUTTONS
-===================================================== */
-
-document
-  .getElementById("newBoxBtn")
-  .addEventListener(
-    "click",
-    () =>
-      openCreateBox()
-  );
-
-
-document
-  .getElementById("emptyAddBtn")
-  .addEventListener(
-    "click",
-    () =>
-      openCreateBox()
-  );
-
-
-document
-  .getElementById("addSpaceBtn")
-  .addEventListener(
-    "click",
-    openSpaceModal
-  );
-
-
-
-/* =====================================================
-   MODAL CLOSE
-===================================================== */
-
-document.addEventListener(
-  "click",
-  event => {
-
-    if (
-      event.target.matches(
-        "[data-close-modal]"
-      )
-    ) {
-
-      closeAllModals();
-
-    }
-
-
-    if (
-      event.target.classList.contains(
-        "modal-overlay"
-      )
-    ) {
-
-      closeAllModals();
-
-    }
-
-  }
-);
-
-
-
-/* =====================================================
-   MOBILE NAV
-===================================================== */
-
-document
-  .querySelectorAll(".mobile-nav-item")
-  .forEach(button => {
-
-    button.addEventListener(
-      "click",
-      () => {
-
-        const action =
-          button.dataset.mobile;
-
-
-        document
-          .querySelectorAll(
-            ".mobile-nav-item"
-          )
-          .forEach(item => {
-
-            item.classList.remove(
-              "active"
-            );
-
-          });
-
-
-        if (
-          action !== "add"
-        ) {
-
-          button.classList.add(
-            "active"
-          );
-
-        }
-
-
-        if (action === "search") {
-
-          openSearch();
-
-        }
-
-
-        if (action === "add") {
-
-          openCreateBox();
-
-        }
-
-
-        if (action === "spaces") {
-
-          window.scrollTo({
-            top: 0,
-            behavior: "smooth"
-          });
-
-
-          showToast(
-            "Spaceها از نوار بالایی قابل انتخاب هستن"
-          );
-
-        }
-
-
-        if (action === "settings") {
-
-          exportData();
-
-        }
-
-      }
-    );
-
-  });
-
 
 
 /* =====================================================
    EXPORT
 ===================================================== */
 
-function exportData() {
+function exportSpace(spaceId) {
 
-  const data =
-    JSON.stringify(
-      state,
-      null,
-      2
-    );
+  const space =
+    getSpace(spaceId);
+
+  if (!space) return;
+
+
+  const data = {
+
+    app: "Chi Space",
+
+    version: 1,
+
+    exportedAt:
+      new Date().toISOString(),
+
+    space: JSON.parse(
+      JSON.stringify(space)
+    )
+  };
 
 
   const blob =
     new Blob(
-      [data],
+      [
+        JSON.stringify(
+          data,
+          null,
+          2
+        )
+      ],
       {
-        type:
-          "application/json"
+        type: "application/json"
       }
     );
 
 
   const url =
-    URL.createObjectURL(blob);
+    URL.createObjectURL(
+      blob
+    );
 
 
-  const link =
+  const a =
     document.createElement("a");
 
+  a.href = url;
 
-  link.href = url;
+  a.download =
+    `${safeFilename(space.name)}.json`;
 
-  link.download =
-    "space-chi-backup.json";
+  document.body.appendChild(a);
 
+  a.click();
 
-  link.click();
-
+  a.remove();
 
   URL.revokeObjectURL(url);
 
-  showToast("نسخه پشتیبان ساخته شد");
-
+  showToast("Space exported");
 }
 
 
-document
-  .getElementById("exportBtn")
-  .addEventListener(
-    "click",
-    exportData
-  );
+function safeFilename(name) {
 
+  return (
+    name
+      .trim()
+      .replace(/[<>:"/\\|?*]+/g, "-")
+      .replace(/\s+/g, "-")
+      .slice(0, 80)
+    ||
+    "space"
+  );
+}
 
 
 /* =====================================================
-   IMPORT
+   CONFIRM
 ===================================================== */
 
-const importFile =
-  document.getElementById(
-    "importFile"
+function openConfirm(
+  title,
+  text,
+  action
+) {
+
+  confirmTitle.textContent =
+    title;
+
+  confirmText.textContent =
+    text;
+
+  confirmAction =
+    action;
+
+  confirmModal.classList.remove(
+    "hidden"
   );
+}
 
 
-document
-  .getElementById("importBtn")
-  .addEventListener(
-    "click",
-    () =>
-      importFile.click()
+function closeConfirm() {
+
+  confirmAction = null;
+
+  confirmModal.classList.add(
+    "hidden"
   );
+}
 
 
-importFile.addEventListener(
-  "change",
-  event => {
-
-    const file =
-      event.target.files[0];
-
-    if (!file)
-      return;
-
-
-    const reader =
-      new FileReader();
-
-
-    reader.onload = () => {
-
-      try {
-
-        const imported =
-          JSON.parse(
-            reader.result
-          );
-
-
-        if (
-          !imported.spaces ||
-          !Array.isArray(
-            imported.spaces
-          )
-        ) {
-
-          throw new Error(
-            "Invalid backup"
-          );
-
-        }
-
-
-        const confirmed =
-          confirm(
-            "اطلاعات فعلی با این نسخه پشتیبان جایگزین بشه؟"
-          );
-
-
-        if (!confirmed)
-          return;
-
-
-        state = imported;
-
-        saveState();
-
-        render();
-
-        showToast(
-          "نسخه پشتیبان وارد شد"
-        );
-
-      } catch (error) {
-
-        console.error(error);
-
-        showToast(
-          "فایل معتبر نیست"
-        );
-
-      }
-
-    };
-
-
-    reader.readAsText(file);
-
-    importFile.value = "";
-
-  }
+cancelConfirm.addEventListener(
+  "click",
+  closeConfirm
 );
 
 
-
-/* =====================================================
-   FOLDER NAVIGATION
-===================================================== */
-
-breadcrumbEl.addEventListener(
+acceptConfirm.addEventListener(
   "click",
-  event => {
+  () => {
 
-    const item =
-      event.target.closest(
-        ".breadcrumb-item"
-      );
+    const action =
+      confirmAction;
 
+    closeConfirm();
 
-    if (!item)
-      return;
-
-
-    const items =
-      breadcrumbEl.querySelectorAll(
-        ".breadcrumb-item"
-      );
-
-
-    if (
-      item === items[0]
-    ) {
-
-      state.currentFolderId =
-        null;
-
-      saveState();
-
-      render();
-
+    if (action) {
+      action();
     }
 
   }
 );
 
 
+confirmModal.addEventListener(
+  "click",
+  event => {
+
+    if (
+      event.target === confirmModal
+    ) {
+      closeConfirm();
+    }
+
+  }
+);
+
 
 /* =====================================================
-   INITIALIZE
+   TAB EVENTS
 ===================================================== */
 
-if (
-  !state.activeSpaceId &&
-  state.spaces.length
-) {
+tabsEl.addEventListener(
+  "click",
+  event => {
 
-  state.activeSpaceId =
-    state.spaces[0].id;
+    const tab =
+      event.target.closest(".tab");
 
-}
+    if (!tab) return;
 
-
-if (!Array.isArray(state.spaces)) {
-
-  state.spaces =
-    defaultState.spaces;
-
-}
+    const id =
+      tab.dataset.spaceId;
 
 
-saveState();
+    const action =
+      event.target.closest(
+        "[data-action]"
+      );
+
+
+    if (action) {
+
+      const type =
+        action.dataset.action;
+
+
+      if (type === "rename") {
+        renameSpace(id);
+      }
+
+      if (type === "export") {
+        exportSpace(id);
+      }
+
+      if (type === "delete") {
+        requestDeleteSpace(id);
+      }
+
+      return;
+    }
+
+
+    state.activeSpaceId =
+      id;
+
+    save();
+
+    render();
+  }
+);
+
+
+/* =====================================================
+   SPACE CREATION
+===================================================== */
+
+document
+  .getElementById("addSpaceBtn")
+  .addEventListener(
+    "click",
+    () => createSpace()
+  );
+
+
+document
+  .getElementById("mobileSpaceBtn")
+  .addEventListener(
+    "click",
+    () => createSpace()
+  );
+
+
+/* =====================================================
+   QUICK ACTIONS
+===================================================== */
+
+document
+  .querySelectorAll(
+    ".quick-btn"
+  )
+  .forEach(button => {
+
+    button.addEventListener(
+      "click",
+      () => {
+
+        addBox(
+          button.dataset.type
+        );
+      }
+    );
+
+  });
+
+
+document
+  .querySelectorAll(
+    "[data-mobile-type]"
+  )
+  .forEach(button => {
+
+    button.addEventListener(
+      "click",
+      () => {
+
+        addBox(
+          button.dataset.mobileType
+        );
+      }
+    );
+
+  });
+
+
+/* =====================================================
+   KEYBOARD SHORTCUTS
+===================================================== */
+
+document.addEventListener(
+  "keydown",
+  event => {
+
+    /*
+      Don't trigger shortcuts
+      while typing.
+    */
+
+    const target =
+      event.target;
+
+    if (
+      target.isContentEditable ||
+      target.tagName === "INPUT" ||
+      target.tagName === "TEXTAREA" ||
+      target.tagName === "SELECT"
+    ) {
+      return;
+    }
+
+
+    if (
+      event.ctrlKey &&
+      event.shiftKey &&
+      event.key.toLowerCase() === "n"
+    ) {
+
+      event.preventDefault();
+
+      createSpace();
+    }
+
+
+    if (
+      event.ctrlKey &&
+      event.shiftKey &&
+      event.key.toLowerCase() === "t"
+    ) {
+
+      event.preventDefault();
+
+      addBox("text");
+    }
+
+  }
+);
+
+
+/* =====================================================
+   INIT
+===================================================== */
+
+load();
 
 render();
