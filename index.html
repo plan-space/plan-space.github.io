@@ -3,10 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#08090a">
 
-  <title>Chi Space</title>
-
-  <meta name="theme-color" content="#0a0a0b">
+  <title>Space Chi</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -22,128 +21,155 @@
 
 <body>
 
-  <!-- TOP -->
-  <header class="topbar">
+<header class="topbar">
 
-    <div class="brand">
-      <img
-        src="https://cdn.imgurl.ir/uploads/j9346_InShot_20260930_141619549.png"
-        alt="Chi Space"
-      >
+  <div class="brand">
+    <div class="brand-mark">
+      <i class="fa-solid fa-layer-group"></i>
     </div>
 
-    <div class="spaces-area">
-      <div id="tabs" class="tabs"></div>
-
-      <button
-        id="addSpaceBtn"
-        class="square-btn"
-        title="New Space"
-      >
-        <i class="fa-solid fa-plus"></i>
-      </button>
+    <div class="brand-name">
+      Space Chi
     </div>
+  </div>
 
-    <div class="quick-actions">
+  <div class="spaces-area">
+    <div id="tabs" class="tabs"></div>
 
-      <button class="quick-btn" data-type="text" title="Text">
-        <i class="fa-solid fa-align-left"></i>
-      </button>
-
-      <button class="quick-btn" data-type="folder" title="Folder">
-        <i class="fa-solid fa-folder"></i>
-      </button>
-
-      <button class="quick-btn" data-type="note" title="Note">
-        <i class="fa-solid fa-note-sticky"></i>
-      </button>
-
-      <button class="quick-btn" data-type="task" title="Task">
-        <i class="fa-solid fa-list-check"></i>
-      </button>
-
-      <button class="quick-btn" data-type="link" title="Link">
-        <i class="fa-solid fa-link"></i>
-      </button>
-
-    </div>
-
-  </header>
-
-
-  <!-- MAIN -->
-  <main id="workspace"></main>
-
-
-  <!-- MOBILE TOOLBAR -->
-  <nav class="mobile-toolbar">
-
-    <button id="mobileSpaceBtn">
+    <button
+      class="square-btn"
+      id="addSpaceBtn"
+      title="New Space"
+      aria-label="New Space"
+    >
       <i class="fa-solid fa-plus"></i>
-      <span>Space</span>
     </button>
+  </div>
 
-    <button data-mobile-type="text">
-      <i class="fa-solid fa-align-left"></i>
+  <div class="quick-actions">
+
+    <button class="quick-btn" data-add="text" title="Add Text">
+      <i class="fa-solid fa-font"></i>
       <span>Text</span>
     </button>
 
-    <button data-mobile-type="folder">
-      <i class="fa-solid fa-folder"></i>
+    <button class="quick-btn" data-add="parent" title="Add Folder">
+      <i class="fa-regular fa-folder"></i>
       <span>Folder</span>
     </button>
 
-    <button data-mobile-type="note">
-      <i class="fa-solid fa-note-sticky"></i>
-      <span>Note</span>
-    </button>
-
-    <button data-mobile-type="task">
+    <button class="quick-btn" data-add="task" title="Add Task">
       <i class="fa-solid fa-list-check"></i>
       <span>Task</span>
     </button>
 
-    <button data-mobile-type="link">
+    <button class="quick-btn" data-add="link" title="Add Link">
       <i class="fa-solid fa-link"></i>
       <span>Link</span>
     </button>
 
-  </nav>
+    <button class="quick-btn" id="importBtn" title="Import JSON">
+      <i class="fa-solid fa-file-import"></i>
+    </button>
 
+    <button class="quick-btn" id="exportBtn" title="Export JSON">
+      <i class="fa-solid fa-file-export"></i>
+    </button>
 
-  <!-- TOAST -->
-  <div id="toast"></div>
+    <button class="quick-btn" id="fullscreenBtn" title="Fullscreen">
+      <i class="fa-solid fa-expand"></i>
+    </button>
 
-
-  <!-- CONFIRM -->
-  <div id="confirmModal" class="modal hidden">
-
-    <div class="modal-card">
-
-      <div class="modal-icon">
-        <i class="fa-solid fa-trash"></i>
-      </div>
-
-      <h3 id="confirmTitle">Delete?</h3>
-
-      <p id="confirmText"></p>
-
-      <div class="modal-actions">
-        <button id="cancelConfirm" class="btn secondary">
-          Cancel
-        </button>
-
-        <button id="acceptConfirm" class="btn danger">
-          Delete
-        </button>
-      </div>
-
-    </div>
+    <button class="quick-btn" id="themeBtn" title="Light / Dark">
+      <i class="fa-solid fa-sun"></i>
+    </button>
 
   </div>
+</header>
 
 
-  <script src="script.js"></script>
+<main id="workspace">
+
+  <section class="space" id="activeSpace">
+
+    <div class="canvas" id="canvas">
+
+      <div class="canvas-inner" id="canvasInner">
+
+        <svg
+          class="connections"
+          id="connections"
+          xmlns="http://www.w3.org/2000/svg"
+        ></svg>
+
+        <div class="empty" id="emptyState">
+          <div class="empty-icon">
+            <i class="fa-solid fa-cubes"></i>
+          </div>
+
+          <h2>Your space is empty</h2>
+          <p>Add a text, folder, task or link to start.</p>
+
+          <button class="btn primary" data-add="text">
+            <i class="fa-solid fa-plus"></i>
+            Add Text
+          </button>
+        </div>
+
+        <div id="boxes"></div>
+
+      </div>
+    </div>
+
+  </section>
+
+</main>
+
+
+<div class="mobile-toolbar">
+
+  <button data-add="text">
+    <i class="fa-solid fa-font"></i>
+    <span>Text</span>
+  </button>
+
+  <button data-add="parent">
+    <i class="fa-regular fa-folder"></i>
+    <span>Folder</span>
+  </button>
+
+  <button data-add="task">
+    <i class="fa-solid fa-list-check"></i>
+    <span>Task</span>
+  </button>
+
+  <button data-add="link">
+    <i class="fa-solid fa-link"></i>
+    <span>Link</span>
+  </button>
+
+  <button id="mobileMoreBtn">
+    <i class="fa-solid fa-ellipsis"></i>
+    <span>More</span>
+  </button>
+
+</div>
+
+
+<input
+  type="file"
+  id="importInput"
+  accept="application/json,.json"
+  hidden
+>
+
+
+<div id="modalRoot"></div>
+
+<div id="toast"></div>
+
+
+<script src="script.js" defer></script>
 
 </body>
 </html>
