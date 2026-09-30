@@ -1,14 +1,33 @@
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#050505">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <meta
+    name="theme-color"
+    content="#08090a"
+  >
 
   <title>404 — Space Chi</title>
 
   <link
-    href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+    rel="preconnect"
+    href="https://fonts.googleapis.com"
+  >
+
+  <link
+    rel="preconnect"
+    href="https://fonts.gstatic.com"
+    crossorigin
+  >
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
     rel="stylesheet"
   >
 
@@ -17,755 +36,217 @@
     href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
   >
 
-  <style>
-    :root {
-      --bg: #050505;
-      --panel: #0b0b0b;
-      --panel-2: #101010;
-      --border: #242424;
-      --border-light: #383838;
-
-      --text: #ededed;
-      --muted: #777;
-      --dim: #454545;
-      --white: #fff;
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    html,
-    body {
-      margin: 0;
-      width: 100%;
-      min-height: 100%;
-    }
-
-    body {
-      min-height: 100vh;
-
-      display: flex;
-      align-items: center;
-      justify-content: center;
-
-      padding: 24px;
-
-      background:
-        radial-gradient(
-          circle at 50% 45%,
-          #111 0,
-          #080808 32%,
-          #050505 65%
-        );
-
-      color: var(--text);
-
-      font-family: Vazirmatn, sans-serif;
-    }
-
-
-    /* =========================
-       APP WINDOW
-    ========================= */
-
-    .window {
-      width: min(820px, 100%);
-
-      border: 1px solid var(--border);
-
-      border-radius: 16px;
-
-      background: rgba(9, 9, 9, .94);
-
-      box-shadow:
-        0 35px 100px rgba(0, 0, 0, .65);
-
-      overflow: hidden;
-
-      animation:
-        windowIn .5s ease both;
-    }
-
-
-    @keyframes windowIn {
-      from {
-        opacity: 0;
-        transform: translateY(10px) scale(.985);
-      }
-
-      to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-      }
-    }
-
-
-    /* =========================
-       WINDOW BAR
-    ========================= */
-
-    .window-bar {
-      height: 48px;
-
-      display: flex;
-      align-items: center;
-
-      padding: 0 16px;
-
-      border-bottom: 1px solid var(--border);
-
-      background: #090909;
-    }
-
-
-    .traffic {
-      display: flex;
-      align-items: center;
-
-      gap: 7px;
-    }
-
-
-    .traffic span {
-      width: 9px;
-      height: 9px;
-
-      display: block;
-
-      border-radius: 50%;
-
-      background: #303030;
-    }
-
-
-    .window-title {
-      position: absolute;
-
-      left: 50%;
-
-      transform: translateX(-50%);
-
-      color: #555;
-
-      font-family:
-        "IBM Plex Mono",
-        monospace;
-
-      font-size: 10px;
-
-      direction: ltr;
-
-      letter-spacing: .3px;
-    }
-
-
-    /* =========================
-       CONTENT
-    ========================= */
-
-    .content {
-      padding: 55px;
-    }
-
-
-    .status {
-      display: flex;
-      align-items: center;
-
-      gap: 8px;
-
-      margin-bottom: 25px;
-
-      color: #666;
-
-      font-family:
-        "IBM Plex Mono",
-        monospace;
-
-      font-size: 11px;
-
-      direction: ltr;
-    }
-
-
-    .status-dot {
-      width: 6px;
-      height: 6px;
-
-      border-radius: 50%;
-
-      background: #777;
-
-      box-shadow:
-        0 0 10px #555;
-
-      animation: pulse 1.7s infinite;
-    }
-
-
-    @keyframes pulse {
-      0%,
-      100% {
-        opacity: .35;
-      }
-
-      50% {
-        opacity: 1;
-      }
-    }
-
-
-    /* =========================
-       404
-    ========================= */
-
-    .error-code {
-      position: relative;
-
-      width: fit-content;
-
-      margin-bottom: 22px;
-
-      color: white;
-
-      font-family:
-        "IBM Plex Mono",
-        monospace;
-
-      font-size:
-        clamp(80px, 16vw, 145px);
-
-      font-weight: 500;
-
-      line-height: .8;
-
-      letter-spacing: -10px;
-
-      direction: ltr;
-
-      user-select: none;
-    }
-
-
-    .error-code::before,
-    .error-code::after {
-      content: "404";
-
-      position: absolute;
-
-      inset: 0;
-
-      pointer-events: none;
-
-      opacity: 0;
-    }
-
-
-    .error-code::before {
-      color: #666;
-
-      transform:
-        translate(-2px, 1px);
-
-      animation: glitchA 4s infinite;
-    }
-
-
-    .error-code::after {
-      color: #aaa;
-
-      transform:
-        translate(2px, -1px);
-
-      animation: glitchB 4s infinite;
-    }
-
-
-    @keyframes glitchA {
-
-      0%,
-      92%,
-      100% {
-        opacity: 0;
-      }
-
-      93% {
-        opacity: .7;
-        clip-path: inset(20% 0 60% 0);
-      }
-
-      94% {
-        opacity: 0;
-      }
-
-      96% {
-        opacity: .4;
-        clip-path: inset(60% 0 15% 0);
-      }
-
-      97% {
-        opacity: 0;
-      }
-    }
-
-
-    @keyframes glitchB {
-
-      0%,
-      94%,
-      100% {
-        opacity: 0;
-      }
-
-      95% {
-        opacity: .5;
-        clip-path: inset(45% 0 35% 0);
-      }
-
-      96% {
-        opacity: 0;
-      }
-    }
-
-
-    h1 {
-      margin: 0 0 10px;
-
-      font-size:
-        clamp(22px, 4vw, 30px);
-
-      font-weight: 600;
-    }
-
-
-    .description {
-      max-width: 520px;
-
-      margin: 0 0 30px;
-
-      color: var(--muted);
-
-      font-size: 13px;
-
-      line-height: 2;
-    }
-
-
-    /* =========================
-       TERMINAL
-    ========================= */
-
-    .terminal {
-      margin-bottom: 28px;
-
-      border: 1px solid var(--border);
-
-      border-radius: 11px;
-
-      overflow: hidden;
-
-      background: #070707;
-
-      direction: ltr;
-
-      text-align: left;
-    }
-
-
-    .terminal-head {
-      height: 34px;
-
-      display: flex;
-      align-items: center;
-
-      padding: 0 12px;
-
-      border-bottom: 1px solid var(--border);
-
-      color: #555;
-
-      font-family:
-        "IBM Plex Mono",
-        monospace;
-
-      font-size: 9px;
-    }
-
-
-    .terminal-body {
-      padding: 15px;
-
-      font-family:
-        "IBM Plex Mono",
-        monospace;
-
-      font-size: 11px;
-
-      line-height: 2;
-
-      color: #777;
-    }
-
-
-    .terminal-line {
-      display: block;
-    }
-
-
-    .terminal-line .command {
-      color: #aaa;
-    }
-
-
-    .terminal-line .error {
-      color: #ddd;
-    }
-
-
-    .cursor {
-      display: inline-block;
-
-      width: 6px;
-      height: 12px;
-
-      margin-left: 3px;
-
-      vertical-align: -2px;
-
-      background: #aaa;
-
-      animation:
-        blink 1s steps(1) infinite;
-    }
-
-
-    @keyframes blink {
-      50% {
-        opacity: 0;
-      }
-    }
-
-
-    /* =========================
-       ACTIONS
-    ========================= */
-
-    .actions {
-      display: flex;
-
-      gap: 8px;
-
-      flex-wrap: wrap;
-    }
-
-
-    .button {
-      min-height: 42px;
-
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-
-      gap: 8px;
-
-      padding: 0 16px;
-
-      border-radius: 9px;
-
-      font-family: Vazirmatn, sans-serif;
-
-      font-size: 12px;
-
-      text-decoration: none;
-
-      cursor: pointer;
-
-      transition:
-        background .18s ease,
-        border-color .18s ease,
-        color .18s ease,
-        transform .18s ease;
-    }
-
-
-    .button:hover {
-      transform: translateY(-1px);
-    }
-
-
-    .button.primary {
-      border: 1px solid white;
-
-      background: white;
-
-      color: black;
-    }
-
-
-    .button.primary:hover {
-      background: #ddd;
-    }
-
-
-    .button.secondary {
-      border: 1px solid var(--border);
-
-      background: var(--panel);
-
-      color: #888;
-    }
-
-
-    .button.secondary:hover {
-      color: white;
-
-      border-color: var(--border-light);
-
-      background: var(--panel-2);
-    }
-
-
-    .button i {
-      font-size: 12px;
-    }
-
-
-    /* =========================
-       FOOTER
-    ========================= */
-
-    .footer {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-
-      gap: 15px;
-
-      margin-top: 32px;
-
-      padding-top: 17px;
-
-      border-top: 1px solid var(--border);
-
-      color: #414141;
-
-      font-family:
-        "IBM Plex Mono",
-        monospace;
-
-      font-size: 9px;
-
-      direction: ltr;
-    }
-
-
-    .footer span:last-child {
-      direction: rtl;
-    }
-
-
-    /* =========================
-       MOBILE
-    ========================= */
-
-    @media (max-width: 600px) {
-
-      body {
-        padding: 12px;
-      }
-
-
-      .window {
-        border-radius: 13px;
-      }
-
-
-      .content {
-        padding: 32px 22px 24px;
-      }
-
-
-      .error-code {
-        font-size: 88px;
-
-        letter-spacing: -6px;
-      }
-
-
-      h1 {
-        font-size: 21px;
-      }
-
-
-      .description {
-        font-size: 12px;
-      }
-
-
-      .actions {
-        flex-direction: column;
-      }
-
-
-      .button {
-        width: 100%;
-      }
-
-
-      .footer {
-        align-items: flex-start;
-
-        flex-direction: column;
-      }
-
-    }
-
-  </style>
+  <!-- Same CSS as the main page -->
+  <link rel="stylesheet" href="style.css">
 </head>
 
+<body class="not-found-page">
 
-<body>
+<header class="topbar">
 
-  <main class="window">
+  <div class="brand">
 
+    <div class="brand-mark">
+      <i class="fa-solid fa-layer-group"></i>
+    </div>
 
-    <!-- Window bar -->
+    <div class="brand-name">
+      Space Chi
+    </div>
 
-    <header class="window-bar">
+  </div>
 
-      <div class="traffic">
+  <div class="spaces-area">
 
-        <span></span>
-        <span></span>
-        <span></span>
+    <div class="tabs">
 
-      </div>
+      <div class="tab active">
 
-      <div class="window-title">
-        space://error/not-found
-      </div>
+        <i class="fa-solid fa-triangle-exclamation tab-icon"></i>
 
-    </header>
-
-
-    <!-- Main -->
-
-    <section class="content">
-
-
-      <div class="status">
-
-        <span class="status-dot"></span>
-
-        SPACE CHI SYSTEM
-
-      </div>
-
-
-      <div class="error-code">
-        404
-      </div>
-
-
-      <h1>
-        این فضا وجود نداره.
-      </h1>
-
-
-      <p class="description">
-        آدرسی که درخواست کردی توی Space Chi پیدا نشد.
-        ممکنه حذف شده باشه، جابه‌جا شده باشه یا اصلاً
-        هیچ‌وقت وجود نداشته باشه.
-      </p>
-
-
-      <!-- Fake terminal -->
-
-      <div class="terminal">
-
-        <div class="terminal-head">
-          space-chi / system
-        </div>
-
-        <div class="terminal-body">
-
-          <span class="terminal-line">
-            <span class="command">
-              $ locate requested-space
-            </span>
-          </span>
-
-          <span class="terminal-line">
-            searching...
-          </span>
-
-          <span class="terminal-line">
-            <span class="error">
-              ERROR: resource_not_found
-            </span>
-          </span>
-
-          <span class="terminal-line">
-            <span class="command">
-              $ return home
-            </span>
-
-            <span class="cursor"></span>
-          </span>
-
+        <div class="tab-name">
+          Lost Space
         </div>
 
       </div>
 
+    </div>
 
-      <!-- Actions -->
+  </div>
 
-      <div class="actions">
+  <div class="quick-actions">
 
-        <a
-          href="./"
-          class="button primary"
-        >
+    <button
+      class="quick-btn"
+      id="backBtn"
+      title="Go Back"
+    >
+      <i class="fa-solid fa-arrow-left"></i>
+    </button>
 
-          <i class="fa-solid fa-house"></i>
+    <button
+      class="quick-btn"
+      id="homeBtn"
+      title="Go Home"
+    >
+      <i class="fa-solid fa-house"></i>
+    </button>
 
-          برگشت به خانه
+  </div>
 
-        </a>
-
-
-        <button
-          class="button secondary"
-          onclick="history.back()"
-        >
-
-          <i class="fa-solid fa-arrow-right"></i>
-
-          صفحه قبل
-
-        </button>
-
-      </div>
+</header>
 
 
-      <footer class="footer">
+<main class="not-found-main">
 
-        <span>
-          SPACE CHI / 404
-        </span>
+  <section class="not-found-card">
 
-        <span>
-          مسیر موردنظر در این فضا وجود ندارد
-        </span>
+    <svg
+      class="not-found-graph"
+      viewBox="0 0 500 170"
+      aria-hidden="true"
+    >
 
-      </footer>
+      <path
+        d="
+          M55 90
+          C130 20,
+          170 20,
+          230 85
+
+          M230 85
+          C300 150,
+          350 150,
+          445 65
+
+          M90 125
+          C170 125,
+          195 75,
+          280 45
+        "
+      />
+
+      <line
+        x1="55"
+        y1="90"
+        x2="55"
+        y2="90"
+      />
+
+      <circle
+        cx="55"
+        cy="90"
+        r="8"
+      />
+
+      <circle
+        cx="230"
+        cy="85"
+        r="11"
+      />
+
+      <circle
+        cx="445"
+        cy="65"
+        r="8"
+      />
+
+      <circle
+        cx="90"
+        cy="125"
+        r="6"
+      />
+
+      <circle
+        cx="280"
+        cy="45"
+        r="7"
+      />
+
+    </svg>
 
 
-    </section>
+    <div class="not-found-code">
+      404
+    </div>
 
-  </main>
+    <h1 class="not-found-title">
+      This Space doesn't exist.
+    </h1>
 
+    <p class="not-found-text">
+      The Space you're looking for may have been
+      moved, deleted, or never existed in the first place.
+    </p>
+
+    <div class="not-found-actions">
+
+      <button
+        class="btn primary"
+        id="homeBtn2"
+      >
+        <i class="fa-solid fa-house"></i>
+        Go Home
+      </button>
+
+      <button
+        class="btn"
+        id="backBtn2"
+      >
+        <i class="fa-solid fa-arrow-left"></i>
+        Go Back
+      </button>
+
+    </div>
+
+  </section>
+
+</main>
+
+
+<script>
+
+  const homeButtons = [
+    document.getElementById("homeBtn"),
+    document.getElementById("homeBtn2")
+  ];
+
+  const backButtons = [
+    document.getElementById("backBtn"),
+    document.getElementById("backBtn2")
+  ];
+
+  homeButtons.forEach(button => {
+
+    button?.addEventListener(
+      "click",
+      () => {
+        window.location.href = "./";
+      }
+    );
+
+  });
+
+  backButtons.forEach(button => {
+
+    button?.addEventListener(
+      "click",
+      () => {
+
+        if (
+          history.length > 1
+        ) {
+          history.back();
+        } else {
+          window.location.href = "./";
+        }
+
+      }
+    );
+
+  });
+
+</script>
 
 </body>
 </html>
