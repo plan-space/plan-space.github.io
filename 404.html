@@ -7,23 +7,28 @@
 
   <title>404 — Space Chi</title>
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-
   <link
-    href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
     rel="stylesheet"
   >
 
-  <style>
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+  >
 
+  <style>
     :root {
       --bg: #050505;
-      --surface: #0d0d0d;
-      --border: #292929;
-      --border-light: #3a3a3a;
-      --text: #f0f0f0;
+      --panel: #0b0b0b;
+      --panel-2: #101010;
+      --border: #242424;
+      --border-light: #383838;
+
+      --text: #ededed;
       --muted: #777;
+      --dim: #454545;
+      --white: #fff;
     }
 
     * {
@@ -40,281 +45,578 @@
     body {
       min-height: 100vh;
 
-      display: grid;
-      place-items: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
 
       padding: 24px;
 
       background:
         radial-gradient(
-          circle at 50% 25%,
-          #171717 0,
-          transparent 35%
-        ),
-        var(--bg);
+          circle at 50% 45%,
+          #111 0,
+          #080808 32%,
+          #050505 65%
+        );
 
       color: var(--text);
 
       font-family: Vazirmatn, sans-serif;
     }
 
-    .page {
-      width: min(620px, 100%);
-      text-align: center;
-    }
 
-    .logo {
-      width: 58px;
-      height: 58px;
+    /* =========================
+       APP WINDOW
+    ========================= */
 
-      margin: 0 auto 25px;
+    .window {
+      width: min(820px, 100%);
 
       border: 1px solid var(--border);
+
       border-radius: 16px;
+
+      background: rgba(9, 9, 9, .94);
+
+      box-shadow:
+        0 35px 100px rgba(0, 0, 0, .65);
 
       overflow: hidden;
 
-      background: var(--surface);
+      animation:
+        windowIn .5s ease both;
     }
 
-    .logo img {
-      width: 100%;
-      height: 100%;
+
+    @keyframes windowIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px) scale(.985);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+
+    /* =========================
+       WINDOW BAR
+    ========================= */
+
+    .window-bar {
+      height: 48px;
+
+      display: flex;
+      align-items: center;
+
+      padding: 0 16px;
+
+      border-bottom: 1px solid var(--border);
+
+      background: #090909;
+    }
+
+
+    .traffic {
+      display: flex;
+      align-items: center;
+
+      gap: 7px;
+    }
+
+
+    .traffic span {
+      width: 9px;
+      height: 9px;
 
       display: block;
 
-      object-fit: cover;
+      border-radius: 50%;
+
+      background: #303030;
     }
 
-    .illustration {
-      position: relative;
 
-      width: min(360px, 90vw);
-      height: 220px;
-
-      margin: 0 auto 18px;
-    }
-
-    .planet {
+    .window-title {
       position: absolute;
 
-      width: 130px;
-      height: 130px;
-
       left: 50%;
-      top: 40px;
 
       transform: translateX(-50%);
 
-      border: 1px solid #454545;
+      color: #555;
+
+      font-family:
+        "IBM Plex Mono",
+        monospace;
+
+      font-size: 10px;
+
+      direction: ltr;
+
+      letter-spacing: .3px;
+    }
+
+
+    /* =========================
+       CONTENT
+    ========================= */
+
+    .content {
+      padding: 55px;
+    }
+
+
+    .status {
+      display: flex;
+      align-items: center;
+
+      gap: 8px;
+
+      margin-bottom: 25px;
+
+      color: #666;
+
+      font-family:
+        "IBM Plex Mono",
+        monospace;
+
+      font-size: 11px;
+
+      direction: ltr;
+    }
+
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+
       border-radius: 50%;
 
-      background:
-        radial-gradient(
-          circle at 35% 30%,
-          #292929,
-          #111 65%
-        );
+      background: #777;
 
       box-shadow:
-        0 0 0 15px rgba(255,255,255,.015),
-        0 0 70px rgba(255,255,255,.03);
+        0 0 10px #555;
+
+      animation: pulse 1.7s infinite;
     }
 
-    .planet::before,
-    .planet::after {
-      content: "";
+
+    @keyframes pulse {
+      0%,
+      100% {
+        opacity: .35;
+      }
+
+      50% {
+        opacity: 1;
+      }
+    }
+
+
+    /* =========================
+       404
+    ========================= */
+
+    .error-code {
+      position: relative;
+
+      width: fit-content;
+
+      margin-bottom: 22px;
+
+      color: white;
+
+      font-family:
+        "IBM Plex Mono",
+        monospace;
+
+      font-size:
+        clamp(80px, 16vw, 145px);
+
+      font-weight: 500;
+
+      line-height: .8;
+
+      letter-spacing: -10px;
+
+      direction: ltr;
+
+      user-select: none;
+    }
+
+
+    .error-code::before,
+    .error-code::after {
+      content: "404";
 
       position: absolute;
 
-      border: 1px solid #303030;
-      border-radius: 50%;
+      inset: 0;
+
+      pointer-events: none;
+
+      opacity: 0;
     }
 
-    .planet::before {
-      width: 55px;
-      height: 14px;
 
-      left: 36px;
-      top: 38px;
-
-      transform: rotate(-18deg);
-    }
-
-    .planet::after {
-      width: 35px;
-      height: 9px;
-
-      left: 55px;
-      top: 72px;
-
-      transform: rotate(20deg);
-    }
-
-    .orbit {
-      position: absolute;
-
-      width: 240px;
-      height: 75px;
-
-      left: 50%;
-      top: 65px;
-
-      transform:
-        translateX(-50%)
-        rotate(-15deg);
-
-      border: 1px solid #303030;
-      border-radius: 50%;
-    }
-
-    .orbit.two {
-      width: 300px;
-      height: 105px;
-
-      transform:
-        translateX(-50%)
-        rotate(20deg);
-    }
-
-    .star {
-      position: absolute;
-
-      width: 3px;
-      height: 3px;
-
-      border-radius: 50%;
-
-      background: #aaa;
-    }
-
-    .s1 { left: 35px; top: 38px; }
-    .s2 { right: 45px; top: 20px; }
-    .s3 { left: 68px; bottom: 35px; }
-    .s4 { right: 25px; bottom: 45px; }
-    .s5 { left: 105px; top: 10px; }
-    .s6 { right: 90px; bottom: 15px; }
-
-    .code {
+    .error-code::before {
       color: #666;
-      font-family: monospace;
-      font-size: 12px;
-      letter-spacing: 3px;
+
+      transform:
+        translate(-2px, 1px);
+
+      animation: glitchA 4s infinite;
     }
+
+
+    .error-code::after {
+      color: #aaa;
+
+      transform:
+        translate(2px, -1px);
+
+      animation: glitchB 4s infinite;
+    }
+
+
+    @keyframes glitchA {
+
+      0%,
+      92%,
+      100% {
+        opacity: 0;
+      }
+
+      93% {
+        opacity: .7;
+        clip-path: inset(20% 0 60% 0);
+      }
+
+      94% {
+        opacity: 0;
+      }
+
+      96% {
+        opacity: .4;
+        clip-path: inset(60% 0 15% 0);
+      }
+
+      97% {
+        opacity: 0;
+      }
+    }
+
+
+    @keyframes glitchB {
+
+      0%,
+      94%,
+      100% {
+        opacity: 0;
+      }
+
+      95% {
+        opacity: .5;
+        clip-path: inset(45% 0 35% 0);
+      }
+
+      96% {
+        opacity: 0;
+      }
+    }
+
 
     h1 {
-      margin: 0;
+      margin: 0 0 10px;
 
-      font-size: clamp(54px, 15vw, 100px);
+      font-size:
+        clamp(22px, 4vw, 30px);
 
-      line-height: .9;
-
-      letter-spacing: -5px;
+      font-weight: 600;
     }
 
-    h2 {
-      margin: 20px 0 8px;
 
-      font-size: 20px;
-    }
+    .description {
+      max-width: 520px;
 
-    p {
-      margin: 0 auto 25px;
-
-      max-width: 430px;
+      margin: 0 0 30px;
 
       color: var(--muted);
 
       font-size: 13px;
+
       line-height: 2;
     }
 
-    .actions {
-      display: flex;
-      justify-content: center;
-      gap: 8px;
+
+    /* =========================
+       TERMINAL
+    ========================= */
+
+    .terminal {
+      margin-bottom: 28px;
+
+      border: 1px solid var(--border);
+
+      border-radius: 11px;
+
+      overflow: hidden;
+
+      background: #070707;
+
+      direction: ltr;
+
+      text-align: left;
     }
 
+
+    .terminal-head {
+      height: 34px;
+
+      display: flex;
+      align-items: center;
+
+      padding: 0 12px;
+
+      border-bottom: 1px solid var(--border);
+
+      color: #555;
+
+      font-family:
+        "IBM Plex Mono",
+        monospace;
+
+      font-size: 9px;
+    }
+
+
+    .terminal-body {
+      padding: 15px;
+
+      font-family:
+        "IBM Plex Mono",
+        monospace;
+
+      font-size: 11px;
+
+      line-height: 2;
+
+      color: #777;
+    }
+
+
+    .terminal-line {
+      display: block;
+    }
+
+
+    .terminal-line .command {
+      color: #aaa;
+    }
+
+
+    .terminal-line .error {
+      color: #ddd;
+    }
+
+
+    .cursor {
+      display: inline-block;
+
+      width: 6px;
+      height: 12px;
+
+      margin-left: 3px;
+
+      vertical-align: -2px;
+
+      background: #aaa;
+
+      animation:
+        blink 1s steps(1) infinite;
+    }
+
+
+    @keyframes blink {
+      50% {
+        opacity: 0;
+      }
+    }
+
+
+    /* =========================
+       ACTIONS
+    ========================= */
+
+    .actions {
+      display: flex;
+
+      gap: 8px;
+
+      flex-wrap: wrap;
+    }
+
+
     .button {
-      min-height: 43px;
+      min-height: 42px;
 
       display: inline-flex;
       align-items: center;
       justify-content: center;
+
       gap: 8px;
 
-      padding: 0 18px;
+      padding: 0 16px;
 
-      border-radius: 10px;
+      border-radius: 9px;
+
+      font-family: Vazirmatn, sans-serif;
+
+      font-size: 12px;
 
       text-decoration: none;
 
-      transition: .18s ease;
+      cursor: pointer;
+
+      transition:
+        background .18s ease,
+        border-color .18s ease,
+        color .18s ease,
+        transform .18s ease;
     }
 
-    .button svg {
-      width: 17px;
-      height: 17px;
 
-      fill: none;
-      stroke: currentColor;
-      stroke-width: 1.7;
-      stroke-linecap: round;
-      stroke-linejoin: round;
+    .button:hover {
+      transform: translateY(-1px);
     }
+
 
     .button.primary {
-      background: white;
-      color: black;
-
       border: 1px solid white;
+
+      background: white;
+
+      color: black;
     }
+
 
     .button.primary:hover {
       background: #ddd;
     }
 
-    .button.secondary {
-      background: var(--surface);
-      color: var(--text-2);
 
+    .button.secondary {
       border: 1px solid var(--border);
+
+      background: var(--panel);
+
+      color: #888;
     }
+
 
     .button.secondary:hover {
       color: white;
+
       border-color: var(--border-light);
+
+      background: var(--panel-2);
     }
 
-    @media (max-width: 500px) {
+
+    .button i {
+      font-size: 12px;
+    }
+
+
+    /* =========================
+       FOOTER
+    ========================= */
+
+    .footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+
+      gap: 15px;
+
+      margin-top: 32px;
+
+      padding-top: 17px;
+
+      border-top: 1px solid var(--border);
+
+      color: #414141;
+
+      font-family:
+        "IBM Plex Mono",
+        monospace;
+
+      font-size: 9px;
+
+      direction: ltr;
+    }
+
+
+    .footer span:last-child {
+      direction: rtl;
+    }
+
+
+    /* =========================
+       MOBILE
+    ========================= */
+
+    @media (max-width: 600px) {
 
       body {
-        padding: 18px;
+        padding: 12px;
       }
 
-      .illustration {
-        height: 190px;
+
+      .window {
+        border-radius: 13px;
       }
 
-      .planet {
-        width: 110px;
-        height: 110px;
+
+      .content {
+        padding: 32px 22px 24px;
       }
 
-      .orbit {
-        width: 210px;
+
+      .error-code {
+        font-size: 88px;
+
+        letter-spacing: -6px;
       }
 
-      .orbit.two {
-        width: 260px;
+
+      h1 {
+        font-size: 21px;
       }
+
+
+      .description {
+        font-size: 12px;
+      }
+
 
       .actions {
         flex-direction: column;
       }
 
+
       .button {
         width: 100%;
+      }
+
+
+      .footer {
+        align-items: flex-start;
+
+        flex-direction: column;
       }
 
     }
@@ -322,81 +624,148 @@
   </style>
 </head>
 
+
 <body>
 
-  <main class="page">
-
-    <div class="logo">
-      <img
-        src="https://cdn.imgurl.ir/uploads/j9346_InShot_20260930_141619549.png"
-        alt="Space Chi"
-      >
-    </div>
+  <main class="window">
 
 
-    <div class="illustration">
+    <!-- Window bar -->
 
-      <span class="star s1"></span>
-      <span class="star s2"></span>
-      <span class="star s3"></span>
-      <span class="star s4"></span>
-      <span class="star s5"></span>
-      <span class="star s6"></span>
+    <header class="window-bar">
 
-      <div class="orbit"></div>
-      <div class="orbit two"></div>
+      <div class="traffic">
 
-      <div class="planet"></div>
+        <span></span>
+        <span></span>
+        <span></span>
 
-    </div>
+      </div>
 
+      <div class="window-title">
+        space://error/not-found
+      </div>
 
-    <div class="code">
-      SPACE / LOST / 404
-    </div>
-
-    <h1>404</h1>
-
-    <h2>این فضا پیدا نشد</h2>
-
-    <p>
-      به نظر میاد مسیری که دنبالشی وجود نداره،
-      حذف شده یا آدرسش اشتباهه.
-    </p>
+    </header>
 
 
-    <div class="actions">
+    <!-- Main -->
 
-      <a href="./" class="button primary">
-
-        <svg viewBox="0 0 24 24">
-          <path d="m4 11 8-7 8 7"/>
-          <path d="M6.5 10v9h11v-9"/>
-          <path d="M10 19v-5h4v5"/>
-        </svg>
-
-        برگشت به Space Chi
-
-      </a>
+    <section class="content">
 
 
-      <button
-        class="button secondary"
-        onclick="history.back()"
-      >
+      <div class="status">
 
-        <svg viewBox="0 0 24 24">
-          <path d="M19 12H5"/>
-          <path d="m11 6-6 6 6 6"/>
-        </svg>
+        <span class="status-dot"></span>
 
-        صفحه قبل
+        SPACE CHI SYSTEM
 
-      </button>
+      </div>
 
-    </div>
+
+      <div class="error-code">
+        404
+      </div>
+
+
+      <h1>
+        این فضا وجود نداره.
+      </h1>
+
+
+      <p class="description">
+        آدرسی که درخواست کردی توی Space Chi پیدا نشد.
+        ممکنه حذف شده باشه، جابه‌جا شده باشه یا اصلاً
+        هیچ‌وقت وجود نداشته باشه.
+      </p>
+
+
+      <!-- Fake terminal -->
+
+      <div class="terminal">
+
+        <div class="terminal-head">
+          space-chi / system
+        </div>
+
+        <div class="terminal-body">
+
+          <span class="terminal-line">
+            <span class="command">
+              $ locate requested-space
+            </span>
+          </span>
+
+          <span class="terminal-line">
+            searching...
+          </span>
+
+          <span class="terminal-line">
+            <span class="error">
+              ERROR: resource_not_found
+            </span>
+          </span>
+
+          <span class="terminal-line">
+            <span class="command">
+              $ return home
+            </span>
+
+            <span class="cursor"></span>
+          </span>
+
+        </div>
+
+      </div>
+
+
+      <!-- Actions -->
+
+      <div class="actions">
+
+        <a
+          href="./"
+          class="button primary"
+        >
+
+          <i class="fa-solid fa-house"></i>
+
+          برگشت به خانه
+
+        </a>
+
+
+        <button
+          class="button secondary"
+          onclick="history.back()"
+        >
+
+          <i class="fa-solid fa-arrow-right"></i>
+
+          صفحه قبل
+
+        </button>
+
+      </div>
+
+
+      <footer class="footer">
+
+        <span>
+          SPACE CHI / 404
+        </span>
+
+        <span>
+          مسیر موردنظر در این فضا وجود ندارد
+        </span>
+
+      </footer>
+
+
+    </section>
 
   </main>
+
 
 </body>
 </html>
