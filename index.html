@@ -3,13 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#08090a">
+  <meta name="theme-color" content="#080b10">
 
   <title>Space Chi</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet"
+  >
 
   <link
     rel="stylesheet"
@@ -24,21 +28,15 @@
 <header class="topbar">
 
   <div class="brand">
-    <div class="brand-mark">
-      <i class="fa-solid fa-layer-group"></i>
-    </div>
-
-    <div class="brand-name">
-      Space Chi
-    </div>
+    <span>Space Chi</span>
   </div>
 
   <div class="spaces-area">
     <div id="tabs" class="tabs"></div>
 
     <button
-      class="square-btn"
       id="addSpaceBtn"
+      class="square-btn"
       title="New Space"
       aria-label="New Space"
     >
@@ -54,7 +52,7 @@
     </button>
 
     <button class="quick-btn" data-add="parent" title="Add Folder">
-      <i class="fa-regular fa-folder"></i>
+      <i class="fa-solid fa-folder"></i>
       <span>Folder</span>
     </button>
 
@@ -68,57 +66,85 @@
       <span>Link</span>
     </button>
 
-    <button class="quick-btn" id="importBtn" title="Import JSON">
+    <button class="quick-btn" data-add="chart" title="Add Chart">
+      <i class="fa-solid fa-chart-simple"></i>
+      <span>Chart</span>
+    </button>
+
+    <span class="action-separator"></span>
+
+    <button id="importBtn" class="square-btn" title="Import JSON">
       <i class="fa-solid fa-file-import"></i>
     </button>
 
-    <button class="quick-btn" id="exportBtn" title="Export JSON">
+    <button id="exportBtn" class="square-btn" title="Export JSON">
       <i class="fa-solid fa-file-export"></i>
     </button>
 
-    <button class="quick-btn" id="fullscreenBtn" title="Fullscreen">
-      <i class="fa-solid fa-expand"></i>
-    </button>
-
-    <button class="quick-btn" id="themeBtn" title="Light / Dark">
+    <button id="themeBtn" class="square-btn" title="Toggle theme">
       <i class="fa-solid fa-sun"></i>
     </button>
 
+    <button id="fullscreenBtn" class="square-btn" title="Fullscreen">
+      <i class="fa-solid fa-expand"></i>
+    </button>
+
   </div>
+
 </header>
 
 
 <main id="workspace">
 
-  <section class="space" id="activeSpace">
+  <section id="spaceViewport" class="space-viewport">
 
-    <div class="canvas" id="canvas">
+    <div id="canvas" class="canvas">
 
-      <div class="canvas-inner" id="canvasInner">
+      <svg
+        id="dotBackground"
+        class="dot-background"
+        aria-hidden="true"
+      >
+        <defs>
+          <pattern
+            id="dotPattern"
+            width="24"
+            height="24"
+            patternUnits="userSpaceOnUse"
+          >
+            <circle
+              cx="2"
+              cy="2"
+              r="1"
+              class="dot"
+            />
+          </pattern>
+        </defs>
 
-        <svg
-          class="connections"
-          id="connections"
-          xmlns="http://www.w3.org/2000/svg"
-        ></svg>
+        <rect
+          width="100%"
+          height="100%"
+          fill="url(#dotPattern)"
+        />
+      </svg>
 
-        <div class="empty" id="emptyState">
-          <div class="empty-icon">
-            <i class="fa-solid fa-cubes"></i>
-          </div>
+      <svg
+        id="connections"
+        class="connections"
+        aria-hidden="true"
+      ></svg>
 
-          <h2>Your space is empty</h2>
-          <p>Add a text, folder, task or link to start.</p>
+      <div id="boxesLayer" class="boxes-layer"></div>
 
-          <button class="btn primary" data-add="text">
-            <i class="fa-solid fa-plus"></i>
-            Add Text
-          </button>
+      <div id="emptyState" class="empty-state">
+        <div class="empty-icon">
+          <i class="fa-regular fa-square"></i>
         </div>
 
-        <div id="boxes"></div>
-
+        <h2>Your space is empty</h2>
+        <p>Add a box to start building your space.</p>
       </div>
+
     </div>
 
   </section>
@@ -126,7 +152,7 @@
 </main>
 
 
-<div class="mobile-toolbar">
+<nav class="mobile-toolbar">
 
   <button data-add="text">
     <i class="fa-solid fa-font"></i>
@@ -134,7 +160,7 @@
   </button>
 
   <button data-add="parent">
-    <i class="fa-regular fa-folder"></i>
+    <i class="fa-solid fa-folder"></i>
     <span>Folder</span>
   </button>
 
@@ -148,25 +174,25 @@
     <span>Link</span>
   </button>
 
-  <button id="mobileMoreBtn">
-    <i class="fa-solid fa-ellipsis"></i>
-    <span>More</span>
+  <button data-add="chart">
+    <i class="fa-solid fa-chart-simple"></i>
+    <span>Chart</span>
   </button>
 
-</div>
+</nav>
 
 
 <input
+  id="fileInput"
   type="file"
-  id="importInput"
   accept="application/json,.json"
   hidden
 >
 
 
-<div id="modalRoot"></div>
+<div id="modalRoot" class="modal-root" hidden></div>
 
-<div id="toast"></div>
+<div id="toast" class="toast"></div>
 
 
 <script src="script.js" defer></script>
