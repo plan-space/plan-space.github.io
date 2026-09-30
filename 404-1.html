@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#050505" />
+  <title>404 / SPACE_NOT_FOUND</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="page-404">
+  <div class="term-wrap">
+    <div class="term-window" role="main">
+      <div class="term-bar">
+        <span class="term-dot"></span>
+        <span class="term-dot"></span>
+        <span class="term-dot"></span>
+        <span class="term-title">plan-space — bash</span>
+      </div>
+      <div class="term-body">
+        <p><span class="term-dim">GET</span> <span class="term-path" id="term-path">/unknown</span></p>
+        <p><span class="term-dim">STATUS</span> 404</p>
+        <p class="term-err">404 / SPACE_NOT_FOUND</p>
+        <p><span class="term-dim">HINT</span> requested space does not exist in this workspace.</p>
+        <p class="term-prompt">guest@plan-space:<span class="term-path">~</span>$ <span class="term-cursor" aria-hidden="true"></span></p>
+        <div class="term-actions">
+          <button type="button" class="term-cmd" id="go-home">cd /plan-space</button>
+          <button type="button" class="term-cmd" id="go-back">history.back()</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>
