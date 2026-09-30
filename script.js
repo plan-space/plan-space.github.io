@@ -1,10 +1,27 @@
 "use strict";
 
-/* =========================================
-   SPACE CHI
-========================================= */
+/*
+  Space Chi
+  Lightweight workspace engine
+*/
 
-const STORAGE_KEY = "spacechi_state_v3";
+const STORAGE_KEY = "spacechi_state_v5";
+
+const MIN_W = 240;
+const MIN_H = 130;
+const MAX_W = 900;
+const MAX_H = 700;
+
+const state = {
+  version: 5,
+  theme: "dark",
+  spaces: [],
+  activeSpaceId: null
+};
+
+let dragState = null;
+let resizeState = null;
+let toastTimer = null;
 
 const $ = (selector, root = document) =>
   root.querySelector(selector);
@@ -12,299 +29,35 @@ const $ = (selector, root = document) =>
 const $$ = (selector, root = document) =>
   [...root.querySelectorAll(selector)];
 
+const canvas = $("#canvas");
+const boxesLayer = $("#boxesLayer");
+const connections = $("#connections");
+const emptyState = $("#emptyState");
+const tabs = $("#tabs");
+const modalRoot = $("#modalRoot");
+const toast = $("#toast");
+const viewport = $("#spaceViewport");
 
-/* =========================================
-   STATE
-========================================= */
 
-const state = {
-  version: 3,
-  theme: "dark",
-  spaces: [],
-  activeSpaceId: null
-};
-
+/* =========================
+   UTILITIES
+========================= */
 
 function uid(prefix = "id") {
-  if (crypto && crypto.randomUUID) {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     return `${prefix}_${crypto.randomUUID()}`;
   }
 
-  return `${prefix}_${Date.now()}_${Math.random()
+  return `${prefix}_${Date.now().toString(36)}_${Math.random()
     .toString(36)
-    .slice(2)}`;
+    .slice(2, 10)}`;
 }
-
-
-function createSpace(name = "Space 1") {
-  return {
-    id: uid("space"),
-    name,
-    scrollX: 0,
-    scrollY: 0,
-    boxes: []
-  };
-}
-
-
-function createBox(type, x = 150, y = 150) {
-
-  return {
-    id: uid("box"),
-
-    type,
-
-    title:
-      type === "text"
-        ? "Text"
-        : type === "parent"
-          ? "Folder"
-          : type === "task"
-            ? "Tasks"
-            : "Link",
-
-    content: "",
-
-    url: "",
-
-    tasks: [],
-
-    parentId: null,
-
-    x,
-    y,
-
-    z: Date.now()
-  };
-}
-
-
-/* =========================================
-   NORMALIZATION
-========================================= */
-
-function normalizeBox(raw) {
-
-  const allowed = [
-    "text",
-    "parent",
-    "task",
-    "link"
-  ];
-
-  const type =
-    allowed.includes(raw?.type)
-      ? raw.type
-      : "text";
-
-  return {
-    id: String(raw?.id || uid("box")),
-
-    type,
-
-    title:
-      typeof raw?.title === "string"
-        ? raw.title.slice(0, 120)
-        : type === "parent"
-          ? "Folder"
-          : type === "task"
-            ? "Tasks"
-            : type === "link"
-              ? "Link"
-              : "Text",
-
-    content:
-      typeof raw?.content === "string"
-        ? sanitizeHTML(raw.content)
-        : "",
-
-    url:
-      typeof raw?.url === "string"
-        ? raw.url.slice(0, 2000)
-        : "",
-
-    tasks:
-      Array.isArray(raw?.tasks)
-        ? raw.tasks
-            .slice(0, 100)
-            .map(task => ({
-              id: String(task?.id || uid("task")),
-              text:
-                typeof task?.text === "string"
-                  ? task.text.slice(0, 500)
-                  : "",
-              done: Boolean(task?.done)
-            }))
-        : [],
-
-    parentId:
-      typeof raw?.parentId === "string"
-        ? raw.parentId
-        : null,
-
-    x:
-      Number.isFinite(Number(raw?.x))
-        ? Math.max(0, Number(raw.x))
-        : 100,
-
-    y:
-      Number.isFinite(Number(raw?.y))
-        ? Math.max(0, Number(raw.y))
-        : 100,
-
-    z:
-      Number.isFinite(Number(raw?.z))
-        ? Number(raw.z)
-        : 1
-  };
-}
-
-
-function normalizeSpace(raw, index) {
-
-  const space = {
-    id: String(raw?.id || uid("space")),
-
-    name:
-      typeof raw?.name === "string" &&
-      raw.name.trim()
-        ? raw.name.trim().slice(0, 80)
-        : `Space ${index + 1}`,
-
-    scrollX:
-      Number(raw?.scrollX) || 0,
-
-    scrollY:
-      Number(raw?.scrollY) || 0,
-
-    boxes:
-      Array.isArray(raw?.boxes)
-        ? raw.boxes.slice(0, 300).map(normalizeBox)
-        : []
-  };
-
-  const ids = new Set(
-    space.boxes.map(box => box.id)
-  );
-
-  space.boxes.forEach(box => {
-
-    if (
-      box.parentId === box.id ||
-      !ids.has(box.parentId)
-    ) {
-      box.parentId = null;
-    }
-  });
-
-  return space;
-}
-
-
-function normalizeState(raw) {
-
-  const spaces =
-    Array.isArray(raw?.spaces) && raw.spaces.length
-      ? raw.spaces.map(normalizeSpace)
-      : [createSpace()];
-
-  const active =
-    spaces.some(s => s.id === raw?.activeSpaceId)
-      ? raw.activeSpaceId
-      : spaces[0].id;
-
-  return {
-    version: 3,
-
-    theme:
-      raw?.theme === "light"
-        ? "light"
-        : "dark",
-
-    spaces,
-
-    activeSpaceId: active
-  };
-}
-
-
-/* =========================================
-   STORAGE
-========================================= */
-
-function saveState() {
-
-  try {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(state)
-    );
-  } catch (error) {
-    showToast(
-      "Could not save workspace.",
-      true
-    );
-  }
-}
-
-
-function loadState() {
-
-  try {
-
-    const raw =
-      localStorage.getItem(STORAGE_KEY);
-
-    if (!raw) {
-      state.spaces = [createSpace()];
-      state.activeSpaceId =
-        state.spaces[0].id;
-
-      return;
-    }
-
-    const parsed = JSON.parse(raw);
-
-    const normalized =
-      normalizeState(parsed);
-
-    Object.assign(state, normalized);
-
-  } catch (error) {
-
-    state.spaces = [createSpace()];
-    state.activeSpaceId =
-      state.spaces[0].id;
-
-    showToast(
-      "Saved data was invalid. A new space was created.",
-      true
-    );
-  }
-}
-
-
-/* =========================================
-   HELPERS
-========================================= */
-
-function activeSpace() {
-  return state.spaces.find(
-    space => space.id === state.activeSpaceId
-  );
-}
-
-
-function getBox(id) {
-  return activeSpace()?.boxes.find(
-    box => box.id === id
-  );
-}
-
 
 function escapeHTML(value) {
-
-  return String(value)
+  return String(value ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -312,23 +65,62 @@ function escapeHTML(value) {
     .replaceAll("'", "&#039;");
 }
 
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
 
-function sanitizeHTML(html) {
+function activeSpace() {
+  return state.spaces.find(
+    space => space.id === state.activeSpaceId
+  ) || null;
+}
 
-  const parser = new DOMParser();
+function getBox(id) {
+  const space = activeSpace();
 
-  const doc = parser.parseFromString(
-    html || "",
-    "text/html"
-  );
+  return space?.boxes.find(
+    box => box.id === id
+  ) || null;
+}
+
+function saveState() {
+  try {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(state)
+    );
+  } catch {
+    showToast("Could not save workspace.");
+  }
+}
+
+function showToast(message) {
+  clearTimeout(toastTimer);
+
+  toast.textContent = message;
+  toast.classList.add("show");
+
+  toastTimer = setTimeout(() => {
+    toast.classList.remove("show");
+  }, 2200);
+}
+
+
+/* =========================
+   NORMALIZATION
+========================= */
+
+function normalizeHTML(html) {
+  const source = document.createElement("div");
+  source.innerHTML = String(html || "");
 
   const allowed = new Set([
     "B",
+    "STRONG",
     "I",
+    "EM",
     "U",
     "S",
-    "STRONG",
-    "EM",
     "H2",
     "H3",
     "P",
@@ -337,71 +129,599 @@ function sanitizeHTML(html) {
     "OL",
     "LI",
     "BLOCKQUOTE",
-    "PRE",
-    "CODE",
     "A"
   ]);
 
-  [...doc.body.querySelectorAll("*")]
-    .forEach(element => {
+  const walker = document.createTreeWalker(
+    source,
+    NodeFilter.SHOW_ELEMENT
+  );
 
-      if (!allowed.has(element.tagName)) {
-        element.replaceWith(
-          ...element.childNodes
+  const elements = [];
+
+  while (walker.nextNode()) {
+    elements.push(walker.currentNode);
+  }
+
+  for (const element of elements) {
+    if (!allowed.has(element.tagName)) {
+      element.replaceWith(
+        ...Array.from(element.childNodes)
+      );
+      continue;
+    }
+
+    for (const attr of [...element.attributes]) {
+      if (attr.name !== "href") {
+        element.removeAttribute(attr.name);
+      }
+    }
+
+    if (element.tagName === "A") {
+      const href = element.getAttribute("href") || "";
+
+      if (!/^https?:\/\//i.test(href)) {
+        element.removeAttribute("href");
+      } else {
+        element.setAttribute(
+          "target",
+          "_blank"
         );
-        return;
+
+        element.setAttribute(
+          "rel",
+          "noopener noreferrer"
+        );
       }
+    }
+  }
 
-      [...element.attributes]
-        .forEach(attribute => {
+  return source.innerHTML;
+}
 
-          const name =
-            attribute.name.toLowerCase();
+function normalizeChart(chart) {
+  const input = chart || {};
 
-          if (
-            name.startsWith("on") ||
-            name === "style" ||
-            name === "class" ||
-            name === "id"
-          ) {
-            element.removeAttribute(
-              attribute.name
-            );
-          }
-        });
+  const labels = Array.isArray(input.labels)
+    ? input.labels.map(
+        value => String(value).slice(0, 80)
+      )
+    : [];
 
-      if (element.tagName === "A") {
+  const values = Array.isArray(input.values)
+    ? input.values.map(
+        value => Number(value) || 0
+      )
+    : [];
 
-        const href =
-          element.getAttribute("href") || "";
+  const count = Math.min(
+    labels.length,
+    values.length
+  );
 
-        if (
-          !/^https?:\/\//i.test(href)
-        ) {
-          element.removeAttribute("href");
-        } else {
-          element.setAttribute(
-            "target",
-            "_blank"
-          );
+  return {
+    kind:
+      ["bar", "line", "pie"].includes(input.kind)
+        ? input.kind
+        : "bar",
 
-          element.setAttribute(
-            "rel",
-            "noopener noreferrer"
-          );
-        }
-      }
-    });
+    description:
+      String(input.description || "").slice(0, 300),
 
-  return doc.body.innerHTML;
+    labels: labels.slice(0, count),
+
+    values: values.slice(0, count)
+  };
+}
+
+function normalizeBox(box) {
+  const type =
+    ["text", "parent", "task", "link", "chart"]
+      .includes(box?.type)
+      ? box.type
+      : "text";
+
+  return {
+    id: String(box?.id || uid("box")),
+    type,
+
+    title:
+      String(box?.title || "Untitled")
+        .slice(0, 100),
+
+    content:
+      normalizeHTML(box?.content || ""),
+
+    url:
+      String(box?.url || "")
+        .slice(0, 2000),
+
+    tasks:
+      Array.isArray(box?.tasks)
+        ? box.tasks.map(task => ({
+            id: String(task?.id || uid("task")),
+            text:
+              String(task?.text || "")
+                .slice(0, 500),
+            done: Boolean(task?.done)
+          }))
+        : [],
+
+    chart: normalizeChart(box?.chart),
+
+    parentId:
+      box?.parentId
+        ? String(box.parentId)
+        : null,
+
+    x: Number.isFinite(Number(box?.x))
+      ? Number(box.x)
+      : 120,
+
+    y: Number.isFinite(Number(box?.y))
+      ? Number(box.y)
+      : 120,
+
+    width:
+      clamp(
+        Number(box?.width) || 340,
+        MIN_W,
+        MAX_W
+      ),
+
+    height:
+      clamp(
+        Number(box?.height) || 220,
+        MIN_H,
+        MAX_H
+      ),
+
+    z:
+      Number.isFinite(Number(box?.z))
+        ? Number(box.z)
+        : 10
+  };
+}
+
+function normalizeSpace(space, index) {
+  const boxes = Array.isArray(space?.boxes)
+    ? space.boxes.map(normalizeBox)
+    : [];
+
+  const ids = new Set(
+    boxes.map(box => box.id)
+  );
+
+  for (const box of boxes) {
+    if (
+      !box.parentId ||
+      !ids.has(box.parentId) ||
+      box.parentId === box.id
+    ) {
+      box.parentId = null;
+    }
+  }
+
+  return {
+    id: String(space?.id || uid("space")),
+    name:
+      String(space?.name || `Space ${index + 1}`)
+        .slice(0, 80),
+    boxes
+  };
 }
 
 
-function safeURL(value) {
+/* =========================
+   INITIAL STATE
+========================= */
+
+function createInitialState() {
+  state.version = 5;
+  state.theme = "dark";
+
+  const space = {
+    id: uid("space"),
+    name: "Space 1",
+    boxes: []
+  };
+
+  state.spaces = [space];
+  state.activeSpaceId = space.id;
+}
+
+function loadState() {
+  try {
+    const raw =
+      localStorage.getItem(STORAGE_KEY);
+
+    if (!raw) {
+      createInitialState();
+      return;
+    }
+
+    const parsed = JSON.parse(raw);
+
+    if (
+      !parsed ||
+      !Array.isArray(parsed.spaces)
+    ) {
+      throw new Error("Invalid workspace");
+    }
+
+    state.theme =
+      parsed.theme === "light"
+        ? "light"
+        : "dark";
+
+    state.spaces =
+      parsed.spaces.length
+        ? parsed.spaces.map(normalizeSpace)
+        : [];
+
+    if (!state.spaces.length) {
+      createInitialState();
+      return;
+    }
+
+    state.activeSpaceId =
+      state.spaces.some(
+        space => space.id === parsed.activeSpaceId
+      )
+        ? parsed.activeSpaceId
+        : state.spaces[0].id;
+
+  } catch {
+    createInitialState();
+    showToast("Workspace was reset.");
+  }
+}
+
+
+/* =========================
+   THEME
+========================= */
+
+function applyTheme() {
+  document.documentElement.dataset.theme =
+    state.theme;
+
+  const icon = $("#themeBtn i");
+
+  if (icon) {
+    icon.className =
+      state.theme === "dark"
+        ? "fa-solid fa-sun"
+        : "fa-solid fa-moon";
+  }
+}
+
+function toggleTheme() {
+  state.theme =
+    state.theme === "dark"
+      ? "light"
+      : "dark";
+
+  applyTheme();
+  saveState();
+}
+
+
+/* =========================
+   TABS
+========================= */
+
+function renderTabs() {
+  tabs.replaceChildren();
+
+  for (const space of state.spaces) {
+    const tab =
+      document.createElement("div");
+
+    tab.className =
+      "tab" +
+      (
+        space.id === state.activeSpaceId
+          ? " active"
+          : ""
+      );
+
+    tab.dataset.spaceId = space.id;
+
+    tab.innerHTML = `
+      <span class="tab-name"></span>
+      <button class="tab-menu" title="Space options">
+        <i class="fa-solid fa-ellipsis"></i>
+      </button>
+    `;
+
+    $(".tab-name", tab).textContent =
+      space.name;
+
+    tabs.appendChild(tab);
+  }
+}
+
+
+/* =========================
+   SPACE RENDER
+========================= */
+
+function renderActiveSpace() {
+  const space = activeSpace();
+
+  boxesLayer.replaceChildren();
+
+  if (!space) {
+    emptyState.classList.remove("hidden");
+    return;
+  }
+
+  emptyState.classList.toggle(
+    "hidden",
+    space.boxes.length !== 0
+  );
+
+  for (const box of space.boxes) {
+    boxesLayer.appendChild(
+      createBoxElement(box)
+    );
+  }
+
+  renderConnections();
+}
+
+
+/* =========================
+   BOX CREATION
+========================= */
+
+function createBoxElement(box) {
+  const el =
+    document.createElement("article");
+
+  el.className = `box box-${box.type}`;
+
+  el.dataset.boxId = box.id;
+
+  el.style.left = `${box.x}px`;
+  el.style.top = `${box.y}px`;
+  el.style.width = `${box.width}px`;
+  el.style.height = `${box.height}px`;
+  el.style.zIndex = String(box.z);
+
+  const icons = {
+    text: "fa-font",
+    parent: "fa-folder",
+    task: "fa-list-check",
+    link: "fa-link",
+    chart: "fa-chart-simple"
+  };
+
+  el.innerHTML = `
+    <header class="box-header">
+      <span class="box-type">
+        <i class="fa-solid ${icons[box.type]}"></i>
+      </span>
+
+      <span class="box-title"></span>
+
+      <div class="box-actions">
+
+        <button
+          class="box-btn edit-box"
+          title="Edit"
+        >
+          <i class="fa-solid fa-pen"></i>
+        </button>
+
+        <button
+          class="box-btn delete delete-box"
+          title="Delete"
+        >
+          <i class="fa-solid fa-trash"></i>
+        </button>
+
+      </div>
+    </header>
+
+    <div class="box-body"></div>
+
+    <div
+      class="box-resize"
+      title="Resize"
+    ></div>
+  `;
+
+  $(".box-title", el).textContent =
+    box.title;
+
+  const body = $(".box-body", el);
+
+  switch (box.type) {
+    case "text":
+      renderTextBox(box, body);
+      break;
+
+    case "parent":
+      renderParentBox(box, body);
+      break;
+
+    case "task":
+      renderTaskBox(box, body);
+      break;
+
+    case "link":
+      renderLinkBox(box, body);
+      break;
+
+    case "chart":
+      renderChartBox(box, body);
+      break;
+  }
+
+  return el;
+}
+
+
+/* =========================
+   TEXT
+========================= */
+
+function renderTextBox(box, body) {
+  body.innerHTML = `
+    <div class="text-editor">
+
+      <div class="rich-toolbar">
+
+        <button class="rich-tool" data-command="bold">
+          <i class="fa-solid fa-bold"></i>
+        </button>
+
+        <button class="rich-tool" data-command="italic">
+          <i class="fa-solid fa-italic"></i>
+        </button>
+
+        <button class="rich-tool" data-command="underline">
+          <i class="fa-solid fa-underline"></i>
+        </button>
+
+        <button class="rich-tool" data-command="formatBlock" data-value="H2">
+          H2
+        </button>
+
+        <button class="rich-tool" data-command="formatBlock" data-value="H3">
+          H3
+        </button>
+
+        <button class="rich-tool" data-command="insertUnorderedList">
+          <i class="fa-solid fa-list"></i>
+        </button>
+
+        <button class="rich-tool" data-command="insertOrderedList">
+          <i class="fa-solid fa-list-ol"></i>
+        </button>
+
+        <button class="rich-tool" data-command="formatBlock" data-value="BLOCKQUOTE">
+          <i class="fa-solid fa-quote-left"></i>
+        </button>
+
+        <button class="rich-tool" data-rich-link>
+          <i class="fa-solid fa-link"></i>
+        </button>
+
+      </div>
+
+      <div
+        class="rich-content"
+        contenteditable="true"
+        spellcheck="true"
+      ></div>
+
+    </div>
+  `;
+
+  $(".rich-content", body).innerHTML =
+    box.content || "";
+}
+
+
+/* =========================
+   PARENT
+========================= */
+
+function renderParentBox(box, body) {
+  const space = activeSpace();
+
+  const children =
+    space.boxes.filter(
+      child => child.parentId === box.id
+    );
+
+  body.innerHTML = `
+    <div class="folder-box">
+
+      <div class="parent-description">
+        ${children.length
+          ? `${children.length} item${children.length > 1 ? "s" : ""} in this folder.`
+          : "This folder is empty."
+        }
+      </div>
+
+      <div class="child-list">
+        ${
+          children.length
+            ? children.map(child => `
+                <span class="child-tag">
+                  ${escapeHTML(child.title)}
+                </span>
+              `).join("")
+            : `<span class="no-children">No connected boxes</span>`
+        }
+      </div>
+
+    </div>
+  `;
+}
+
+
+/* =========================
+   TASK
+========================= */
+
+function renderTaskBox(box, body) {
+  body.innerHTML = `
+    <div class="task-list">
+
+      ${
+        box.tasks.map(task => `
+          <div
+            class="task-row ${task.done ? "done" : ""}"
+            data-task-id="${escapeHTML(task.id)}"
+          >
+
+            <button class="task-check">
+              ${
+                task.done
+                  ? `<i class="fa-solid fa-check"></i>`
+                  : ""
+              }
+            </button>
+
+            <div
+              class="task-text"
+              contenteditable="true"
+              spellcheck="true"
+            >${escapeHTML(task.text)}</div>
+
+            <button class="task-remove">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+
+          </div>
+        `).join("")
+      }
+
+      <button class="add-task">
+        <i class="fa-solid fa-plus"></i>
+        Add task
+      </button>
+
+    </div>
+  `;
+}
+
+
+/* =========================
+   LINK
+========================= */
+
+function normalizeURL(value) {
+  const text =
+    String(value || "").trim();
 
   try {
-
-    const url = new URL(value);
+    const url = new URL(text);
 
     if (
       url.protocol !== "http:" &&
@@ -411,1443 +731,571 @@ function safeURL(value) {
     }
 
     return url.href;
-
   } catch {
     return "";
   }
 }
 
+function renderLinkBox(box, body) {
+  body.innerHTML = `
+    <div class="link-box">
 
-/* =========================================
-   TABS
-========================================= */
+      <div class="link-url">
 
-function renderTabs() {
+        <input
+          class="link-input"
+          type="url"
+          placeholder="https://example.com"
+          autocomplete="off"
+        >
 
-  const tabs = $("#tabs");
+        <button class="link-save">
+          <i class="fa-solid fa-arrow-right"></i>
+        </button>
 
-  tabs.replaceChildren();
+      </div>
 
-  state.spaces.forEach(space => {
+      <div class="link-preview"></div>
 
-    const tab =
-      document.createElement("div");
+    </div>
+  `;
 
-    tab.className =
-      `tab ${
-        space.id === state.activeSpaceId
-          ? "active"
-          : ""
-      }`;
+  $(".link-input", body).value =
+    box.url || "";
 
-    tab.dataset.id = space.id;
-
-    const icon =
-      document.createElement("i");
-
-    icon.className =
-      "fa-regular fa-window-maximize tab-icon";
-
-    const name =
-      document.createElement("div");
-
-    name.className = "tab-name";
-    name.textContent = space.name;
-
-    const close =
-      document.createElement("button");
-
-    close.className = "tab-close";
-    close.title = "Delete Space";
-
-    close.innerHTML =
-      '<i class="fa-solid fa-xmark"></i>';
-
-    tab.append(icon, name, close);
-
-    tabs.appendChild(tab);
-  });
+  updateLinkPreview(box, body);
 }
 
-
-$("#tabs").addEventListener(
-  "click",
-  event => {
-
-    const tab =
-      event.target.closest(".tab");
-
-    if (!tab) return;
-
-    const id = tab.dataset.id;
-
-    if (
-      event.target.closest(".tab-close")
-    ) {
-      deleteSpace(id);
-      return;
-    }
-
-    state.activeSpaceId = id;
-
-    saveState();
-
-    render();
-  }
-);
-
-
-$("#tabs").addEventListener(
-  "dblclick",
-  event => {
-
-    const tab =
-      event.target.closest(".tab");
-
-    if (!tab) return;
-
-    renameSpace(tab.dataset.id);
-  }
-);
-
-
-/* =========================================
-   RENDER
-========================================= */
-
-function render() {
-
-  renderTabs();
-  renderBoxes();
-  applyTheme();
-
-  const space = activeSpace();
-
-  if (space) {
-
-    const canvas = $("#canvas");
-
-    requestAnimationFrame(() => {
-
-      canvas.scrollLeft =
-        space.scrollX || 0;
-
-      canvas.scrollTop =
-        space.scrollY || 0;
-    });
-  }
-}
-
-
-function renderBoxes() {
-
-  const space = activeSpace();
-
-  const container = $("#boxes");
-  const empty = $("#emptyState");
-
-  container.replaceChildren();
-
-  if (!space) return;
-
-  empty.classList.toggle(
-    "hidden",
-    space.boxes.length > 0
-  );
-
-  space.boxes
-    .sort((a, b) => a.z - b.z)
-    .forEach(box => {
-
-      const element =
-        createBoxElement(box);
-
-      container.appendChild(element);
-    });
-
-  updateCanvasSize();
-
-  requestAnimationFrame(
-    renderConnections
-  );
-}
-
-
-/* =========================================
-   BOX CREATION
-========================================= */
-
-function createBoxElement(box) {
-
-  const el =
-    document.createElement("article");
-
-  el.className =
-    `box ${
-      box.type === "parent"
-        ? "folder"
-        : ""
-    }`;
-
-  el.dataset.id = box.id;
-
-  el.style.left = `${box.x}px`;
-  el.style.top = `${box.y}px`;
-
-  el.style.zIndex =
-    String(box.z || 1);
-
-  const header =
-    document.createElement("div");
-
-  header.className = "box-header";
-
-  const type =
-    document.createElement("div");
-
-  type.className = "box-type";
-
-  type.innerHTML =
-    typeIcon(box.type);
-
-  const title =
-    document.createElement("div");
-
-  title.className = "box-title";
-  title.textContent = box.title;
-
-  const actions =
-    document.createElement("div");
-
-  actions.className = "box-actions";
-
-  const edit =
-    makeBoxButton(
-      "fa-solid fa-pen",
-      "Rename"
-    );
-
-  edit.dataset.action = "rename";
-
-  const remove =
-    makeBoxButton(
-      "fa-solid fa-trash",
-      "Delete"
-    );
-
-  remove.classList.add("delete");
-  remove.dataset.action = "delete";
-
-  actions.append(edit, remove);
-
-  header.append(
-    type,
-    title,
-    actions
-  );
-
-  el.appendChild(header);
-
-
-  if (box.type !== "parent") {
-
-    const parent =
-      document.createElement("div");
-
-    parent.className = "box-parent";
-
-    parent.innerHTML =
-      createParentSelect(box);
-
-    el.appendChild(parent);
-  }
-
-
-  const body =
-    document.createElement("div");
-
-  body.className = "box-body";
-
-  if (box.type === "text") {
-    body.appendChild(
-      createTextEditor(box)
-    );
-  }
-
-  if (box.type === "parent") {
-    body.appendChild(
-      createFolderBody(box)
-    );
-  }
-
-  if (box.type === "task") {
-    body.appendChild(
-      createTaskBody(box)
-    );
-  }
-
-  if (box.type === "link") {
-    body.appendChild(
-      createLinkBody(box)
-    );
-  }
-
-  el.appendChild(body);
-
-  return el;
-}
-
-
-function typeIcon(type) {
-
-  if (type === "text")
-    return '<i class="fa-solid fa-font"></i>';
-
-  if (type === "parent")
-    return '<i class="fa-regular fa-folder"></i>';
-
-  if (type === "task")
-    return '<i class="fa-solid fa-list-check"></i>';
-
-  return '<i class="fa-solid fa-link"></i>';
-}
-
-
-function makeBoxButton(icon, title) {
-
-  const button =
-    document.createElement("button");
-
-  button.className = "box-btn";
-
-  button.title = title;
-
-  button.innerHTML =
-    `<i class="${icon}"></i>`;
-
-  return button;
-}
-
-
-/* =========================================
-   PARENT SELECT
-========================================= */
-
-function getDescendants(
-  space,
-  id
-) {
-
-  const result = new Set();
-
-  let changed = true;
-
-  while (changed) {
-
-    changed = false;
-
-    space.boxes.forEach(box => {
-
-      if (
-        box.parentId === id ||
-        result.has(box.parentId)
-      ) {
-        if (!result.has(box.id)) {
-          result.add(box.id);
-          changed = true;
-        }
-      }
-    });
-  }
-
-  return result;
-}
-
-
-function createParentSelect(box) {
-
-  const space = activeSpace();
-
-  const select =
-    document.createElement("select");
-
-  select.className =
-    "parent-select";
-
-  select.dataset.action =
-    "parent";
-
-  select.innerHTML =
-    '<option value="">No parent</option>';
-
-  const descendants =
-    getDescendants(
-      space,
-      box.id
-    );
-
-  space.boxes
-    .filter(other =>
-      other.id !== box.id &&
-      other.type === "parent" &&
-      !descendants.has(other.id)
-    )
-    .forEach(other => {
-
-      const option =
-        document.createElement("option");
-
-      option.value = other.id;
-      option.textContent = other.title;
-
-      if (
-        box.parentId === other.id
-      ) {
-        option.selected = true;
-      }
-
-      select.appendChild(option);
-    });
-
-  return select.outerHTML;
-}
-
-
-/* =========================================
-   TEXT
-========================================= */
-
-function createTextEditor(box) {
-
-  const wrapper =
-    document.createElement("div");
-
-  const toolbar =
-    document.createElement("div");
-
-  toolbar.className =
-    "editor-toolbar";
-
-  const tools = [
-    ["bold", "fa-solid fa-bold"],
-    ["italic", "fa-solid fa-italic"],
-    ["underline", "fa-solid fa-underline"],
-    ["formatBlock:h2", "fa-solid fa-heading"],
-    ["insertUnorderedList", "fa-solid fa-list"],
-    ["insertOrderedList", "fa-solid fa-list-ol"],
-    ["blockquote", "fa-solid fa-quote-left"],
-    ["code", "fa-solid fa-code"],
-    ["link", "fa-solid fa-link"]
-  ];
-
-  tools.forEach(([command, icon]) => {
-
-    const button =
-      document.createElement("button");
-
-    button.className = "tool-btn";
-
-    button.type = "button";
-
-    button.dataset.command =
-      command;
-
-    button.innerHTML =
-      `<i class="${icon}"></i>`;
-
-    toolbar.appendChild(button);
-  });
-
-
-  const editor =
-    document.createElement("div");
-
-  editor.className = "editor";
-
-  editor.contentEditable = "true";
-
-  editor.spellcheck = true;
-
-  editor.innerHTML =
-    sanitizeHTML(box.content || "");
-
-  editor.dataset.action =
-    "editor";
-
-  wrapper.append(
-    toolbar,
-    editor
-  );
-
-  return wrapper;
-}
-
-
-/* =========================================
-   FOLDER
-========================================= */
-
-function createFolderBody(box) {
-
-  const wrapper =
-    document.createElement("div");
-
-  const description =
-    document.createElement("div");
-
-  description.className =
-    "no-children";
-
-  const children =
-    activeSpace().boxes
-      .filter(child =>
-        child.parentId === box.id
-      );
-
-  if (!children.length) {
-
-    description.textContent =
-      "No connected boxes yet.";
-
-    wrapper.appendChild(description);
-
-    return wrapper;
-  }
-
-  description.textContent =
-    `${children.length} connected ${
-      children.length === 1
-        ? "box"
-        : "boxes"
-    }`;
-
-  const list =
-    document.createElement("div");
-
-  list.className =
-    "folder-children";
-
-  children.forEach(child => {
-
-    const tag =
-      document.createElement("div");
-
-    tag.className = "child-tag";
-
-    tag.textContent =
-      child.title;
-
-    list.appendChild(tag);
-  });
-
-  wrapper.append(
-    description,
-    list
-  );
-
-  return wrapper;
-}
-
-
-/* =========================================
-   TASKS
-========================================= */
-
-function createTaskBody(box) {
-
-  const wrapper =
-    document.createElement("div");
-
-  const list =
-    document.createElement("div");
-
-  list.className =
-    "task-list";
-
-  box.tasks.forEach(task => {
-
-    const row =
-      document.createElement("div");
-
-    row.className =
-      `task ${
-        task.done ? "done" : ""
-      }`;
-
-    row.dataset.taskId =
-      task.id;
-
-    const check =
-      document.createElement("input");
-
-    check.type = "checkbox";
-    check.className = "task-check";
-    check.checked = task.done;
-
-    const text =
-      document.createElement("div");
-
-    text.className = "task-text";
-
-    text.contentEditable = "true";
-
-    text.textContent = task.text;
-
-    const remove =
-      document.createElement("button");
-
-    remove.className =
-      "task-remove";
-
-    remove.dataset.action =
-      "remove-task";
-
-    remove.innerHTML =
-      '<i class="fa-solid fa-xmark"></i>';
-
-    row.append(
-      check,
-      text,
-      remove
-    );
-
-    list.appendChild(row);
-  });
-
-
-  const add =
-    document.createElement("button");
-
-  add.className = "add-task";
-
-  add.dataset.action =
-    "add-task";
-
-  add.innerHTML =
-    '<i class="fa-solid fa-plus"></i> Add task';
-
-  wrapper.append(
-    list,
-    add
-  );
-
-  return wrapper;
-}
-
-
-/* =========================================
-   LINKS
-========================================= */
-
-function createLinkBody(box) {
-
-  const wrapper =
-    document.createElement("div");
-
-  const row =
-    document.createElement("div");
-
-  row.className = "link-row";
-
-  const input =
-    document.createElement("input");
-
-  input.className = "link-input";
-
-  input.type = "url";
-
-  input.placeholder =
-    "https://example.com";
-
-  input.value = box.url || "";
-
-  input.dataset.action =
-    "link-input";
-
-  const go =
-    document.createElement("button");
-
-  go.className = "link-go";
-
-  go.dataset.action =
-    "open-link";
-
-  go.innerHTML =
-    '<i class="fa-solid fa-arrow-up-right-from-square"></i>';
-
-  row.append(
-    input,
-    go
-  );
-
-  wrapper.appendChild(row);
-
-  if (box.url) {
-
-    const safe =
-      safeURL(box.url);
-
-    if (safe) {
-
-      const preview =
-        document.createElement("div");
-
-      preview.className =
-        "link-preview";
-
-      const title =
-        document.createElement("div");
-
-      title.className =
-        "link-preview-title";
-
-      title.textContent =
-        getDomain(safe);
-
-      const url =
-        document.createElement("div");
-
-      url.className =
-        "link-preview-url";
-
-      url.textContent =
-        safe;
-
-      preview.append(
-        title,
-        url
-      );
-
-      const media =
-        getEmbedURL(safe);
-
-      if (media) {
-
-        const iframe =
-          document.createElement("iframe");
-
-        iframe.className =
-          "embed";
-
-        iframe.src = media;
-
-        iframe.loading =
-          "lazy";
-
-        iframe.allowFullscreen = true;
-
-        iframe.setAttribute(
-          "referrerpolicy",
-          "strict-origin-when-cross-origin"
-        );
-
-        preview.appendChild(
-          iframe
-        );
-      }
-
-      wrapper.appendChild(
-        preview
-      );
-    }
-  }
-
-  return wrapper;
-}
-
-
-function getDomain(url) {
-
+function youtubeID(url) {
   try {
-    return new URL(url).hostname;
-  } catch {
-    return "Link";
-  }
-}
-
-
-function getEmbedURL(url) {
-
-  try {
-
-    const parsed =
-      new URL(url);
+    const parsed = new URL(url);
 
     if (
-      parsed.hostname.includes(
-        "youtube.com"
-      )
+      parsed.hostname.includes("youtube.com")
     ) {
-
-      const id =
-        parsed.searchParams.get("v");
-
-      if (id) {
-        return `https://www.youtube.com/embed/${encodeURIComponent(id)}`;
-      }
+      return parsed.searchParams.get("v");
     }
 
     if (
-      parsed.hostname ===
-        "youtu.be"
+      parsed.hostname.includes("youtu.be")
     ) {
-
-      const id =
-        parsed.pathname.slice(1);
-
-      if (id) {
-        return `https://www.youtube.com/embed/${encodeURIComponent(id)}`;
-      }
+      return parsed.pathname.slice(1);
     }
-
-    if (
-      parsed.hostname.includes(
-        "vimeo.com"
-      )
-    ) {
-
-      const id =
-        parsed.pathname.split("/")[1];
-
-      if (/^\d+$/.test(id)) {
-        return `https://player.vimeo.com/video/${id}`;
-      }
-    }
-
   } catch {}
 
-  return "";
+  return null;
+}
+
+function vimeoID(url) {
+  try {
+    const parsed = new URL(url);
+
+    if (
+      parsed.hostname.includes("vimeo.com")
+    ) {
+      const match =
+        parsed.pathname.match(/\/(\d+)/);
+
+      return match?.[1] || null;
+    }
+  } catch {}
+
+  return null;
+}
+
+function updateLinkPreview(box, body) {
+  const preview =
+    $(".link-preview", body);
+
+  preview.replaceChildren();
+
+  if (!box.url) {
+    preview.textContent =
+      "Enter a URL to create a preview.";
+
+    return;
+  }
+
+  const youtube =
+    youtubeID(box.url);
+
+  if (youtube) {
+    const iframe =
+      document.createElement("iframe");
+
+    iframe.className = "embed";
+
+    iframe.src =
+      `https://www.youtube-nocookie.com/embed/${encodeURIComponent(youtube)}`;
+
+    iframe.loading = "lazy";
+    iframe.referrerPolicy =
+      "strict-origin-when-cross-origin";
+
+    preview.appendChild(iframe);
+    return;
+  }
+
+  const vimeo =
+    vimeoID(box.url);
+
+  if (vimeo) {
+    const iframe =
+      document.createElement("iframe");
+
+    iframe.className = "embed";
+
+    iframe.src =
+      `https://player.vimeo.com/video/${encodeURIComponent(vimeo)}`;
+
+    iframe.loading = "lazy";
+
+    preview.appendChild(iframe);
+    return;
+  }
+
+  const link =
+    document.createElement("a");
+
+  link.href = box.url;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = box.url;
+
+  preview.appendChild(link);
+
+  const small =
+    document.createElement("small");
+
+  small.textContent =
+    "Open in a new tab";
+
+  preview.appendChild(small);
 }
 
 
-/* =========================================
-   ADD BOX
-========================================= */
+/* =========================
+   CHART
+========================= */
 
-function addBox(type) {
+function renderChartBox(box, body) {
+  body.innerHTML = `
+    <div class="chart-box">
 
-  const space = activeSpace();
+      <div class="chart-meta">
+        <span class="chart-kind">
+          ${escapeHTML(
+            box.chart.kind.toUpperCase()
+          )}
+        </span>
 
-  if (!space) return;
+        <button
+          class="box-btn edit-chart"
+          title="Edit chart"
+        >
+          <i class="fa-solid fa-sliders"></i>
+        </button>
+      </div>
 
-  const offset =
-    100 + (space.boxes.length % 5) * 45;
+      <div class="chart-render"></div>
 
-  const box =
-    createBox(
-      type,
-      offset,
-      offset
-    );
+    </div>
+  `;
 
-  space.boxes.push(box);
-
-  saveState();
-  render();
-
-  showToast(
-    `${capitalize(type)} added.`
+  drawChart(
+    box,
+    $(".chart-render", body)
   );
 }
 
+function drawChart(box, target) {
+  target.replaceChildren();
 
-function capitalize(text) {
+  const chart =
+    normalizeChart(box.chart);
 
-  return text.charAt(0).toUpperCase() +
-    text.slice(1);
-}
+  if (!chart.labels.length) {
+    const empty =
+      document.createElement("div");
 
+    empty.className = "chart-empty";
+    empty.textContent =
+      "No chart data.";
 
-document.addEventListener(
-  "click",
-  event => {
-
-    const add =
-      event.target.closest(
-        "[data-add]"
-      );
-
-    if (add) {
-      addBox(add.dataset.add);
-    }
+    target.appendChild(empty);
+    return;
   }
-);
 
-
-/* =========================================
-   BOX EVENTS
-========================================= */
-
-$("#boxes").addEventListener(
-  "click",
-  event => {
-
-    const boxEl =
-      event.target.closest(".box");
-
-    if (!boxEl) return;
-
-    const box =
-      getBox(boxEl.dataset.id);
-
-    if (!box) return;
-
-    const action =
-      event.target.closest(
-        "[data-action]"
-      )?.dataset.action;
-
-    if (action === "delete") {
-      deleteBox(box.id);
-    }
-
-    if (action === "rename") {
-      renameBox(box.id);
-    }
-
-    if (action === "add-task") {
-
-      box.tasks.push({
-        id: uid("task"),
-        text: "New task",
-        done: false
-      });
-
-      saveState();
-      renderBoxes();
-    }
-
-    if (action === "remove-task") {
-
-      const task =
-        event.target.closest(".task");
-
-      if (!task) return;
-
-      box.tasks =
-        box.tasks.filter(
-          item =>
-            item.id !==
-            task.dataset.taskId
-        );
-
-      saveState();
-      renderBoxes();
-    }
-
-    if (action === "open-link") {
-
-      const url =
-        safeURL(box.url);
-
-      if (url) {
-        window.open(
-          url,
-          "_blank",
-          "noopener,noreferrer"
-        );
-      } else {
-        showToast(
-          "Enter a valid HTTP or HTTPS URL.",
-          true
-        );
-      }
-    }
-  }
-);
-
-
-/* =========================================
-   CHANGE EVENTS
-========================================= */
-
-$("#boxes").addEventListener(
-  "change",
-  event => {
-
-    const boxEl =
-      event.target.closest(".box");
-
-    if (!boxEl) return;
-
-    const box =
-      getBox(boxEl.dataset.id);
-
-    if (!box) return;
-
-    if (
-      event.target.matches(
-        ".parent-select"
-      )
-    ) {
-
-      box.parentId =
-        event.target.value || null;
-
-      saveState();
-      renderBoxes();
-      return;
-    }
-
-    if (
-      event.target.matches(
-        ".task-check"
-      )
-    ) {
-
-      const task =
-        event.target.closest(".task");
-
-      const item =
-        box.tasks.find(
-          taskData =>
-            taskData.id ===
-            task.dataset.taskId
-        );
-
-      if (item) {
-        item.done =
-          event.target.checked;
-      }
-
-      saveState();
-
-      task.classList.toggle(
-        "done",
-        event.target.checked
-      );
-
-      renderConnections();
-    }
-  }
-);
-
-
-/* =========================================
-   INPUT EVENTS
-========================================= */
-
-$("#boxes").addEventListener(
-  "input",
-  event => {
-
-    const boxEl =
-      event.target.closest(".box");
-
-    if (!boxEl) return;
-
-    const box =
-      getBox(boxEl.dataset.id);
-
-    if (!box) return;
-
-    if (
-      event.target.matches(".editor")
-    ) {
-
-      box.content =
-        sanitizeHTML(
-          event.target.innerHTML
-        );
-
-      saveState();
-    }
-
-    if (
-      event.target.matches(".task-text")
-    ) {
-
-      const task =
-        event.target.closest(".task");
-
-      const item =
-        box.tasks.find(
-          taskData =>
-            taskData.id ===
-            task.dataset.taskId
-        );
-
-      if (item) {
-        item.text =
-          event.target.textContent;
-      }
-
-      saveState();
-    }
-
-    if (
-      event.target.matches(
-        ".link-input"
-      )
-    ) {
-
-      box.url =
-        event.target.value.trim();
-
-      saveState();
-    }
-  }
-);
-
-
-/* =========================================
-   RICH TOOLBAR
-========================================= */
-
-$("#boxes").addEventListener(
-  "mousedown",
-  event => {
-
-    const button =
-      event.target.closest(
-        ".tool-btn"
-      );
-
-    if (!button) return;
-
-    event.preventDefault();
-
-    const editor =
-      button
-        .closest(".editor-toolbar")
-        ?.nextElementSibling;
-
-    if (!editor) return;
-
-    editor.focus();
-
-    const command =
-      button.dataset.command;
-
-    if (command === "code") {
-
-      document.execCommand(
-        "formatBlock",
-        false,
-        "pre"
-      );
-
-    } else if (
-      command === "blockquote"
-    ) {
-
-      document.execCommand(
-        "formatBlock",
-        false,
-        "blockquote"
-      );
-
-    } else if (
-      command.startsWith("formatBlock:")
-    ) {
-
-      document.execCommand(
-        "formatBlock",
-        false,
-        command.split(":")[1]
-      );
-
-    } else if (command === "link") {
-
-      const url =
-        window.prompt
-          ? null
-          : null;
-
-      const link =
-        safeURL(
-          promptForLink()
-        );
-
-      if (link) {
-
-        document.execCommand(
-          "createLink",
-          false,
-          link
-        );
-      }
-
-    } else {
-
-      document.execCommand(
-        command,
-        false,
-        null
-      );
-    }
-
-    const boxEl =
-      button.closest(".box");
-
-    if (boxEl) {
-
-      const box =
-        getBox(boxEl.dataset.id);
-
-      if (box) {
-
-        box.content =
-          sanitizeHTML(
-            editor.innerHTML
-          );
-
-        saveState();
-      }
-    }
-  }
-);
-
-
-function promptForLink() {
-
-  /*
-   * Rich text link uses the browser's
-   * input only as a tiny fallback.
-   *
-   * Main application popups remain custom.
-   */
-
-  return window.prompt(
-    "Link URL",
-    "https://"
-  ) || "";
-}
-
-
-/* =========================================
-   DRAGGING
-========================================= */
-
-let drag = null;
-
-$("#boxes").addEventListener(
-  "pointerdown",
-  event => {
-
-    const header =
-      event.target.closest(
-        ".box-header"
-      );
-
-    if (!header) return;
-
-    if (
-      event.target.closest(
-        ".box-btn"
-      )
-    ) return;
-
-    const boxEl =
-      header.closest(".box");
-
-    const box =
-      getBox(boxEl.dataset.id);
-
-    if (!box) return;
-
-    event.preventDefault();
-
-    const startX =
-      event.clientX;
-
-    const startY =
-      event.clientY;
-
-    const original = [];
-
-    const space = activeSpace();
-
-    const moving =
-      new Set([
-        box.id,
-        ...getDescendants(
-          space,
-          box.id
-        )
-      ]);
-
-    moving.forEach(id => {
-
-      const target =
-        getBox(id);
-
-      if (!target) return;
-
-      original.push({
-        id,
-        x: target.x,
-        y: target.y
-      });
-    });
-
-    drag = {
-      boxEl,
-      startX,
-      startY,
-      original,
-      moving
-    };
-
-    boxEl.classList.add(
-      "dragging"
+  const width = 310;
+  const height = 150;
+
+  if (chart.kind === "pie") {
+    drawPieChart(
+      chart,
+      target,
+      width,
+      height
     );
-
-    boxEl.setPointerCapture(
-      event.pointerId
-    );
+    return;
   }
-);
-
-
-$("#boxes").addEventListener(
-  "pointermove",
-  event => {
-
-    if (!drag) return;
-
-    const dx =
-      event.clientX -
-      drag.startX;
-
-    const dy =
-      event.clientY -
-      drag.startY;
-
-    const space =
-      activeSpace();
-
-    drag.original.forEach(item => {
-
-      const box =
-        getBox(item.id);
-
-      if (!box) return;
-
-      box.x =
-        Math.max(
-          0,
-          Math.round(item.x + dx)
-        );
-
-      box.y =
-        Math.max(
-          0,
-          Math.round(item.y + dy)
-        );
-
-      const element =
-        $(
-          `.box[data-id="${CSS.escape(box.id)}"]`
-        );
-
-      if (element) {
-
-        element.style.left =
-          `${box.x}px`;
-
-        element.style.top =
-          `${box.y}px`;
-      }
-    });
-
-    updateCanvasSize();
-
-    renderConnections();
-  }
-);
-
-
-$("#boxes").addEventListener(
-  "pointerup",
-  event => {
-
-    if (!drag) return;
-
-    drag.boxEl.classList.remove(
-      "dragging"
-    );
-
-    saveState();
-
-    drag = null;
-  }
-);
-
-
-$("#boxes").addEventListener(
-  "pointercancel",
-  () => {
-
-    if (!drag) return;
-
-    drag.boxEl.classList.remove(
-      "dragging"
-    );
-
-    drag = null;
-
-    renderBoxes();
-  }
-);
-
-
-/* =========================================
-   CONNECTIONS
-========================================= */
-
-function renderConnections() {
 
   const svg =
-    $("#connections");
+    document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "svg"
+    );
 
-  if (!svg) return;
+  svg.classList.add("chart-svg");
 
-  svg.replaceChildren();
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
 
-  const space =
-    activeSpace();
+  const max =
+    Math.max(
+      1,
+      ...chart.values
+    );
+
+  const left = 28;
+  const right = 8;
+  const top = 8;
+  const bottom = 25;
+
+  const graphW =
+    width - left - right;
+
+  const graphH =
+    height - top - bottom;
+
+  for (let i = 0; i <= 4; i++) {
+    const y =
+      top + graphH -
+      (graphH * i / 4);
+
+    const line =
+      document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "line"
+      );
+
+    line.classList.add("chart-grid");
+
+    line.setAttribute("x1", left);
+    line.setAttribute("x2", width - right);
+    line.setAttribute("y1", y);
+    line.setAttribute("y2", y);
+
+    svg.appendChild(line);
+  }
+
+  if (chart.kind === "bar") {
+    const slot =
+      graphW / chart.values.length;
+
+    const barWidth =
+      Math.max(
+        10,
+        Math.min(42, slot * .58)
+      );
+
+    chart.values.forEach(
+      (value, index) => {
+        const x =
+          left +
+          slot * index +
+          (slot - barWidth) / 2;
+
+        const h =
+          graphH *
+          (Math.max(0, value) / max);
+
+        const y =
+          top + graphH - h;
+
+        const rect =
+          document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "rect"
+          );
+
+        rect.classList.add("chart-bar");
+
+        rect.setAttribute("x", x);
+        rect.setAttribute("y", y);
+        rect.setAttribute("width", barWidth);
+        rect.setAttribute("height", h);
+        rect.setAttribute("rx", 4);
+
+        svg.appendChild(rect);
+
+        const label =
+          document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "text"
+          );
+
+        label.classList.add("chart-label");
+
+        label.setAttribute(
+          "x",
+          x + barWidth / 2
+        );
+
+        label.setAttribute(
+          "y",
+          height - 7
+        );
+
+        label.setAttribute(
+          "text-anchor",
+          "middle"
+        );
+
+        label.textContent =
+          chart.labels[index].slice(0, 10);
+
+        svg.appendChild(label);
+      }
+    );
+  }
+
+  if (chart.kind === "line") {
+    const points = chart.values.map(
+      (value, index) => {
+        const x =
+          chart.values.length === 1
+            ? left + graphW / 2
+            : left +
+              graphW *
+              (index / (chart.values.length - 1));
+
+        const y =
+          top +
+          graphH -
+          graphH *
+          (Math.max(0, value) / max);
+
+        return { x, y };
+      }
+    );
+
+    const path =
+      document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "path"
+      );
+
+    path.classList.add("chart-line");
+
+    path.setAttribute(
+      "d",
+      points.map(
+        (point, index) =>
+          `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`
+      ).join(" ")
+    );
+
+    svg.appendChild(path);
+
+    points.forEach(
+      (point, index) => {
+        const circle =
+          document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "circle"
+          );
+
+        circle.classList.add("chart-point");
+
+        circle.setAttribute("cx", point.x);
+        circle.setAttribute("cy", point.y);
+        circle.setAttribute("r", 4);
+
+        svg.appendChild(circle);
+
+        const label =
+          document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "text"
+          );
+
+        label.classList.add("chart-label");
+
+        label.setAttribute("x", point.x);
+        label.setAttribute("y", height - 7);
+        label.setAttribute("text-anchor", "middle");
+
+        label.textContent =
+          chart.labels[index].slice(0, 9);
+
+        svg.appendChild(label);
+      }
+    );
+  }
+
+  target.appendChild(svg);
+}
+
+function drawPieChart(chart, target, width, height) {
+  const svg =
+    document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "svg"
+    );
+
+  svg.classList.add("chart-svg");
+
+  svg.setAttribute(
+    "viewBox",
+    `0 0 ${width} ${height}`
+  );
+
+  const total =
+    chart.values.reduce(
+      (sum, value) =>
+        sum + Math.max(0, value),
+      0
+    );
+
+  if (!total) {
+    const empty =
+      document.createElement("div");
+
+    empty.className = "chart-empty";
+    empty.textContent =
+      "Values must be greater than zero.";
+
+    target.appendChild(empty);
+    return;
+  }
+
+  const cx = 85;
+  const cy = 75;
+  const radius = 58;
+
+  let angle = -Math.PI / 2;
+
+  const legend =
+    document.createElement("div");
+
+  legend.className =
+    "chart-legend";
+
+  chart.values.forEach(
+    (value, index) => {
+      const portion =
+        Math.max(0, value) / total;
+
+      const next =
+        angle +
+        portion * Math.PI * 2;
+
+      const large =
+        next - angle > Math.PI
+          ? 1
+          : 0;
+
+      const x1 =
+        cx + radius * Math.cos(angle);
+
+      const y1 =
+        cy + radius * Math.sin(angle);
+
+      const x2 =
+        cx + radius * Math.cos(next);
+
+      const y2 =
+        cy + radius * Math.sin(next);
+
+      const path =
+        document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "path"
+        );
+
+      path.classList.add(
+        "chart-pie-slice"
+      );
+
+      path.setAttribute(
+        "d",
+        `
+          M ${cx} ${cy}
+          L ${x1} ${y1}
+          A ${radius} ${radius} 0 ${large} 1 ${x2} ${y2}
+          Z
+        `
+      );
+
+      svg.appendChild(path);
+
+      const item =
+        document.createElement("div");
+
+      item.className =
+        "legend-item";
+
+      item.innerHTML = `
+        <span class="legend-dot"></span>
+        <span></span>
+      `;
+
+      item.querySelector("span:last-child")
+        .textContent =
+          `${chart.labels[index]} ${Math.round(portion * 100)}%`;
+
+      legend.appendChild(item);
+
+      angle = next;
+    }
+  );
+
+  target.appendChild(svg);
+  target.appendChild(legend);
+}
+
+
+/* =========================
+   CONNECTIONS
+========================= */
+
+function renderConnections() {
+  const space = activeSpace();
+
+  connections.replaceChildren();
 
   if (!space) return;
 
-  space.boxes.forEach(child => {
+  const byId = new Map(
+    space.boxes.map(
+      box => [box.id, box]
+    )
+  );
 
-    if (!child.parentId) return;
+  for (const child of space.boxes) {
+    if (!child.parentId) continue;
 
     const parent =
-      getBox(child.parentId);
+      byId.get(child.parentId);
 
-    if (!parent) return;
+    if (!parent) continue;
 
-    const childEl =
-      $(
-        `.box[data-id="${CSS.escape(child.id)}"]`
-      );
+    const startX =
+      parent.x + parent.width / 2;
 
-    const parentEl =
-      $(
-        `.box[data-id="${CSS.escape(parent.id)}"]`
-      );
+    const startY =
+      parent.y + parent.height;
 
-    if (!childEl || !parentEl) return;
+    const endX =
+      child.x + child.width / 2;
 
-    const childX =
-      child.x +
-      childEl.offsetWidth / 2;
-
-    const childY =
+    const endY =
       child.y;
 
-    const parentX =
-      parent.x +
-      parentEl.offsetWidth / 2;
-
-    const parentY =
-      parent.y +
-      parentEl.offsetHeight;
-
-    const middleY =
-      (childY + parentY) / 2;
+    const distance =
+      Math.max(
+        60,
+        Math.abs(endY - startY) * .45
+      );
 
     const path =
       document.createElementNS(
@@ -1862,920 +1310,602 @@ function renderConnections() {
     path.setAttribute(
       "d",
       `
-      M ${parentX} ${parentY}
-      C ${parentX} ${middleY},
-        ${childX} ${middleY},
-        ${childX} ${childY}
+        M ${startX} ${startY}
+        C ${startX} ${startY + distance},
+          ${endX} ${endY - distance},
+          ${endX} ${endY}
       `
     );
 
-    svg.appendChild(path);
-
-    const dot =
-      document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "circle"
-      );
-
-    dot.classList.add(
-      "connection-dot"
-    );
-
-    dot.setAttribute(
-      "cx",
-      childX
-    );
-
-    dot.setAttribute(
-      "cy",
-      childY
-    );
-
-    dot.setAttribute(
-      "r",
-      "3"
-    );
-
-    svg.appendChild(dot);
-  });
-}
-
-
-function updateCanvasSize() {
-
-  const space =
-    activeSpace();
-
-  if (!space) return;
-
-  const inner =
-    $("#canvasInner");
-
-  if (!inner) return;
-
-  let width = 2400;
-  let height = 1600;
-
-  space.boxes.forEach(box => {
-
-    width =
-      Math.max(
-        width,
-        box.x + 500
-      );
-
-    height =
-      Math.max(
-        height,
-        box.y + 400
-      );
-  });
-
-  inner.style.width =
-    `${width}px`;
-
-  inner.style.height =
-    `${height}px`;
-}
-
-
-/* =========================================
-   SPACE SCROLL
-========================================= */
-
-$("#canvas").addEventListener(
-  "scroll",
-  () => {
-
-    const space =
-      activeSpace();
-
-    if (!space) return;
-
-    space.scrollX =
-      $("#canvas").scrollLeft;
-
-    space.scrollY =
-      $("#canvas").scrollTop;
-
-    saveState();
+    connections.appendChild(path);
   }
-);
-
-
-/* =========================================
-   SPACE MODALS
-========================================= */
-
-$("#addSpaceBtn").addEventListener(
-  "click",
-  () => {
-
-    openModal({
-      title: "New Space",
-      icon: "fa-solid fa-plus",
-      text: "Give your new Space a name.",
-      input: true,
-      placeholder: "Space name",
-      buttons: [
-        {
-          label: "Cancel",
-          className: "ghost",
-          close: true
-        },
-        {
-          label: "Create",
-          className: "primary",
-          action: value => {
-
-            const name =
-              value.trim() ||
-              `Space ${
-                state.spaces.length + 1
-              }`;
-
-            const space =
-              createSpace(name);
-
-            state.spaces.push(space);
-
-            state.activeSpaceId =
-              space.id;
-
-            saveState();
-            render();
-
-            showToast(
-              "Space created."
-            );
-          }
-        }
-      ]
-    });
-  }
-);
-
-
-function renameSpace(id) {
-
-  const space =
-    state.spaces.find(
-      item => item.id === id
-    );
-
-  if (!space) return;
-
-  openModal({
-    title: "Rename Space",
-    icon: "fa-solid fa-pen",
-    text: "Choose a new name for this Space.",
-    input: true,
-    value: space.name,
-    placeholder: "Space name",
-    buttons: [
-      {
-        label: "Cancel",
-        className: "ghost",
-        close: true
-      },
-      {
-        label: "Save",
-        className: "primary",
-        action: value => {
-
-          const name =
-            value.trim();
-
-          if (!name) {
-            showToast(
-              "Name cannot be empty.",
-              true
-            );
-            return false;
-          }
-
-          space.name =
-            name.slice(0, 80);
-
-          saveState();
-          render();
-
-          showToast(
-            "Space renamed."
-          );
-        }
-      }
-    ]
-  });
 }
 
 
-/* =========================================
-   BOX MODALS
-========================================= */
+/* =========================
+   BOX POSITION
+========================= */
 
-function renameBox(id) {
+function applyBoxPosition(el, box) {
+  el.style.left = `${box.x}px`;
+  el.style.top = `${box.y}px`;
+}
 
-  const box = getBox(id);
-
-  if (!box) return;
-
-  openModal({
-    title: "Rename Box",
-    icon: "fa-solid fa-pen",
-    text: "Choose a name for this box.",
-    input: true,
-    value: box.title,
-    placeholder: "Box name",
-    buttons: [
-      {
-        label: "Cancel",
-        className: "ghost",
-        close: true
-      },
-      {
-        label: "Save",
-        className: "primary",
-        action: value => {
-
-          const name =
-            value.trim();
-
-          if (!name) {
-            showToast(
-              "Name cannot be empty.",
-              true
-            );
-            return false;
-          }
-
-          box.title =
-            name.slice(0, 120);
-
-          saveState();
-          renderBoxes();
-
-          showToast(
-            "Box renamed."
-          );
-        }
-      }
-    ]
-  });
+function updateConnectionFast() {
+  requestAnimationFrame(
+    renderConnections
+  );
 }
 
 
-function deleteBox(id) {
+/* =========================
+   DRAG
+========================= */
 
-  const space =
-    activeSpace();
+function startDrag(event, el) {
+  if (event.button !== 0) return;
 
   const box =
-    getBox(id);
+    getBox(el.dataset.boxId);
 
   if (!box) return;
 
-  openModal({
-    title: "Delete Box",
-    icon: "fa-solid fa-trash",
-    text:
-      `Delete "${box.title}"? This cannot be undone.`,
-    buttons: [
-      {
-        label: "Cancel",
-        className: "ghost",
-        close: true
-      },
-      {
-        label: "Continue",
-        className: "danger",
-        action: () => {
-
-          space.boxes =
-            space.boxes.filter(
-              item => item.id !== id
-            );
-
-          space.boxes.forEach(item => {
-
-            if (
-              item.parentId === id
-            ) {
-              item.parentId = null;
-            }
-          });
-
-          saveState();
-          render();
-
-          showToast(
-            "Box deleted."
-          );
-        }
-      }
-    ]
-  });
-}
-
-
-/* =========================================
-   DELETE SPACE - MULTI STEP
-========================================= */
-
-function deleteSpace(id) {
-
-  if (state.spaces.length <= 1) {
-
-    showToast(
-      "You must keep at least one Space.",
-      true
-    );
-
+  if (
+    event.target.closest("button") ||
+    event.target.closest("input") ||
+    event.target.closest("textarea") ||
+    event.target.closest("[contenteditable='true']") ||
+    event.target.closest(".box-resize")
+  ) {
     return;
   }
 
-  const space =
-    state.spaces.find(
-      item => item.id === id
+  event.preventDefault();
+
+  const descendants =
+    collectDescendants(box.id);
+
+  dragState = {
+    pointerId: event.pointerId,
+
+    boxId: box.id,
+
+    startX: event.clientX,
+    startY: event.clientY,
+
+    boxes: [
+      {
+        box,
+        x: box.x,
+        y: box.y
+      },
+
+      ...descendants.map(child => ({
+        box: child,
+        x: child.x,
+        y: child.y
+      }))
+    ]
+  };
+
+  el.classList.add("is-dragging");
+
+  el.setPointerCapture(
+    event.pointerId
+  );
+
+  el.style.zIndex = "100";
+}
+
+function moveDrag(event, el) {
+  if (!dragState) return;
+
+  if (
+    event.pointerId !==
+    dragState.pointerId
+  ) {
+    return;
+  }
+
+  const dx =
+    event.clientX -
+    dragState.startX;
+
+  const dy =
+    event.clientY -
+    dragState.startY;
+
+  for (const item of dragState.boxes) {
+    item.box.x =
+      Math.max(
+        20,
+        item.x + dx
+      );
+
+    item.box.y =
+      Math.max(
+        20,
+        item.y + dy
+      );
+
+    const element =
+      boxesLayer.querySelector(
+        `[data-box-id="${CSS.escape(item.box.id)}"]`
+      );
+
+    if (element) {
+      applyBoxPosition(
+        element,
+        item.box
+      );
+    }
+  }
+
+  updateConnectionFast();
+}
+
+function endDrag(event, el) {
+  if (!dragState) return;
+
+  if (
+    event.pointerId !==
+    dragState.pointerId
+  ) {
+    return;
+  }
+
+  el.classList.remove(
+    "is-dragging"
+  );
+
+  el.releasePointerCapture?.(
+    event.pointerId
+  );
+
+  el.style.zIndex =
+    String(
+      getBox(el.dataset.boxId)?.z || 10
     );
 
-  if (!space) return;
+  dragState = null;
 
-  openModal({
-    title: "Delete Space",
-    icon: "fa-solid fa-triangle-exclamation",
-    step: "Step 1 of 3",
-    text:
-      `You're about to delete "${space.name}". All boxes inside it will be removed.`,
-    buttons: [
-      {
-        label: "Cancel",
-        className: "ghost",
-        close: true
-      },
-      {
-        label: "Continue",
-        className: "danger",
-        action: () => {
+  saveState();
+  renderConnections();
+}
 
-          openModal({
-            title: "Confirm Space",
-            icon: "fa-solid fa-shield-halved",
-            step: "Step 2 of 3",
-            text:
-              "This action cannot be undone. Continue to the final confirmation?",
-            buttons: [
-              {
-                label: "Cancel",
-                className: "ghost",
-                close: true
-              },
-              {
-                label: "Continue",
-                className: "danger",
-                action: () => {
+function collectDescendants(parentId) {
+  const space = activeSpace();
 
-                  openModal({
-                    title: "Final Confirmation",
-                    icon: "fa-solid fa-trash-can",
-                    step: "Step 3 of 3",
-                    text:
-                      `Final confirmation: permanently delete "${space.name}"?`,
-                    buttons: [
-                      {
-                        label: "Keep Space",
-                        className: "ghost",
-                        close: true
-                      },
-                      {
-                        label: "Delete Permanently",
-                        className: "danger",
-                        action: () => {
+  if (!space) return [];
 
-                          state.spaces =
-                            state.spaces.filter(
-                              item =>
-                                item.id !== id
-                            );
+  const result = [];
 
-                          state.activeSpaceId =
-                            state.spaces[0].id;
+  function walk(id) {
+    const children =
+      space.boxes.filter(
+        box => box.parentId === id
+      );
 
-                          saveState();
-                          render();
+    for (const child of children) {
+      result.push(child);
+      walk(child.id);
+    }
+  }
 
-                          showToast(
-                            "Space deleted."
-                          );
-                        }
-                      }
-                    ]
-                  });
-                }
-              }
-            ]
-          });
-        }
-      }
-    ]
-  });
+  walk(parentId);
+
+  return result;
 }
 
 
-/* =========================================
-   CUSTOM MODAL
-========================================= */
+/* =========================
+   RESIZE
+========================= */
 
-let activeModalCleanup = null;
+function startResize(event, el) {
+  if (event.button !== 0) return;
 
-function openModal(options) {
+  const box =
+    getBox(el.dataset.boxId);
 
-  closeModal();
+  if (!box) return;
 
-  const root =
-    $("#modalRoot");
+  event.preventDefault();
+  event.stopPropagation();
+
+  resizeState = {
+    pointerId: event.pointerId,
+
+    box,
+
+    element: el,
+
+    startX: event.clientX,
+    startY: event.clientY,
+
+    width: box.width,
+    height: box.height
+  };
+
+  el.classList.add(
+    "is-dragging"
+  );
+
+  el.setPointerCapture(
+    event.pointerId
+  );
+
+  el.style.zIndex = "100";
+}
+
+function moveResize(event) {
+  if (!resizeState) return;
+
+  if (
+    event.pointerId !==
+    resizeState.pointerId
+  ) {
+    return;
+  }
+
+  const box =
+    resizeState.box;
+
+  box.width =
+    clamp(
+      resizeState.width +
+        event.clientX -
+        resizeState.startX,
+
+      MIN_W,
+      MAX_W
+    );
+
+  box.height =
+    clamp(
+      resizeState.height +
+        event.clientY -
+        resizeState.startY,
+
+      MIN_H,
+      MAX_H
+    );
+
+  resizeState.element.style.width =
+    `${box.width}px`;
+
+  resizeState.element.style.height =
+    `${box.height}px`;
+
+  requestAnimationFrame(
+    renderConnections
+  );
+}
+
+function endResize(event) {
+  if (!resizeState) return;
+
+  if (
+    event.pointerId !==
+    resizeState.pointerId
+  ) {
+    return;
+  }
+
+  const el =
+    resizeState.element;
+
+  el.classList.remove(
+    "is-dragging"
+  );
+
+  el.releasePointerCapture?.(
+    event.pointerId
+  );
+
+  el.style.zIndex =
+    String(resizeState.box.z || 10);
+
+  resizeState = null;
+
+  saveState();
+  renderConnections();
+}
+
+
+/* =========================
+   MODAL
+========================= */
+
+function closeModal() {
+  modalRoot.replaceChildren();
+  modalRoot.hidden = true;
+}
+
+function openModal({
+  title,
+  description = "",
+  icon = "fa-window-maximize",
+  bodyHTML = "",
+  buttons = []
+}) {
+  modalRoot.hidden = false;
 
   const modal =
     document.createElement("div");
 
   modal.className = "modal";
 
-  const card =
-    document.createElement("div");
+  modal.innerHTML = `
+    <div class="modal-head">
 
-  card.className =
-    "modal-card";
+      <div class="modal-icon">
+        <i class="fa-solid ${icon}"></i>
+      </div>
 
-  const head =
-    document.createElement("div");
-
-  head.className =
-    "modal-head";
-
-  const icon =
-    document.createElement("div");
-
-  icon.className =
-    "modal-icon";
-
-  icon.innerHTML =
-    `<i class="${options.icon || "fa-solid fa-window-maximize"}"></i>`;
-
-  const titleWrap =
-    document.createElement("div");
-
-  const title =
-    document.createElement("div");
-
-  title.className =
-    "modal-title";
-
-  title.textContent =
-    options.title || "Space Chi";
-
-  titleWrap.appendChild(title);
-
-  if (options.step) {
-
-    const step =
-      document.createElement("div");
-
-    step.className =
-      "modal-step";
-
-    step.textContent =
-      options.step;
-
-    titleWrap.appendChild(step);
-  }
-
-  head.append(
-    icon,
-    titleWrap
-  );
-
-
-  const body =
-    document.createElement("div");
-
-  body.className =
-    "modal-body";
-
-  const text =
-    document.createElement("div");
-
-  text.className =
-    "modal-text";
-
-  text.textContent =
-    options.text || "";
-
-  body.appendChild(text);
-
-
-  let input = null;
-
-  if (options.input) {
-
-    input =
-      document.createElement("input");
-
-    input.className =
-      "modal-input";
-
-    input.type =
-      "text";
-
-    input.placeholder =
-      options.placeholder || "";
-
-    input.value =
-      options.value || "";
-
-    body.appendChild(input);
-  }
-
-
-  const actions =
-    document.createElement("div");
-
-  actions.className =
-    "modal-actions";
-
-
-  (options.buttons || [])
-    .forEach(buttonData => {
-
-      const button =
-        document.createElement("button");
-
-      button.className =
-        `btn ${
-          buttonData.className || ""
-        }`;
-
-      button.textContent =
-        buttonData.label;
-
-      button.addEventListener(
-        "click",
-        () => {
-
-          let result;
-
-          if (buttonData.action) {
-
-            result =
-              buttonData.action(
-                input?.value || ""
-              );
-          }
-
-          if (
-            buttonData.close !== false &&
-            result !== false
-          ) {
-            closeModal();
-          }
+      <div class="modal-title">
+        <h2>${escapeHTML(title)}</h2>
+        ${
+          description
+            ? `<p>${escapeHTML(description)}</p>`
+            : ""
         }
-      );
+      </div>
 
-      actions.appendChild(button);
-    });
+      <button class="modal-close">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
 
+    </div>
 
-  card.append(
-    head,
-    body,
-    actions
-  );
+    <div class="modal-body">
+      ${bodyHTML}
+    </div>
 
-  modal.appendChild(card);
+    <div class="modal-foot"></div>
+  `;
 
-  root.appendChild(modal);
+  const foot =
+    $(".modal-foot", modal);
 
-  const closeOnEscape =
-    event => {
+  for (const button of buttons) {
+    const btn =
+      document.createElement("button");
 
-      if (
-        event.key === "Escape"
-      ) {
-        closeModal();
-      }
-    };
+    btn.className =
+      `btn ${button.className || ""}`;
 
-  document.addEventListener(
-    "keydown",
-    closeOnEscape
-  );
+    btn.textContent =
+      button.label;
 
-  activeModalCleanup = () => {
-    document.removeEventListener(
-      "keydown",
-      closeOnEscape
-    );
-  };
-
-  if (input) {
-
-    requestAnimationFrame(() => {
-
-      input.focus();
-
-      input.select();
-    });
-  }
-}
-
-
-function closeModal() {
-
-  if (activeModalCleanup) {
-    activeModalCleanup();
-    activeModalCleanup = null;
-  }
-
-  $("#modalRoot")
-    .replaceChildren();
-}
-
-
-/* =========================================
-   IMPORT / EXPORT
-========================================= */
-
-$("#exportBtn").addEventListener(
-  "click",
-  () => {
-
-    const data = {
-      ...state,
-
-      exportedAt:
-        new Date().toISOString(),
-
-      application:
-        "Space Chi"
-    };
-
-    downloadJSON(
-      data,
-      "space-chi-workspace.json"
-    );
-
-    showToast(
-      "Workspace exported."
-    );
-  }
-);
-
-
-function downloadJSON(data, filename) {
-
-  const blob =
-    new Blob(
-      [
-        JSON.stringify(
-          data,
-          null,
-          2
-        )
-      ],
-      {
-        type:
-          "application/json"
+    btn.addEventListener(
+      "click",
+      () => {
+        button.action?.(modal);
       }
     );
 
-  const url =
-    URL.createObjectURL(blob);
+    foot.appendChild(btn);
+  }
 
-  const a =
-    document.createElement("a");
+  $(".modal-close", modal)
+    .addEventListener(
+      "click",
+      closeModal
+    );
 
-  a.href = url;
-  a.download = filename;
-
-  document.body.appendChild(a);
-
-  a.click();
-
-  a.remove();
-
-  setTimeout(
-    () => URL.revokeObjectURL(url),
-    1000
-  );
+  modalRoot.replaceChildren(modal);
 }
 
 
-$("#importBtn").addEventListener(
-  "click",
-  () => {
+/* =========================
+   SPACE ACTIONS
+========================= */
 
-    $("#importInput").click();
-  }
-);
-
-
-$("#importInput").addEventListener(
-  "change",
-  event => {
-
-    const file =
-      event.target.files?.[0];
-
-    if (!file) return;
-
-    if (
-      file.size >
-      8 * 1024 * 1024
-    ) {
-
-      showToast(
-        "JSON file is too large.",
-        true
-      );
-
-      event.target.value = "";
-
-      return;
-    }
-
-    const reader =
-      new FileReader();
-
-    reader.onload = () => {
-
-      try {
-
-        const parsed =
-          JSON.parse(
-            reader.result
-          );
-
-        const imported =
-          normalizeState(parsed);
-
-        const boxCount =
-          imported.spaces.reduce(
-            (sum, space) =>
-              sum + space.boxes.length,
-            0
-          );
-
-        openImportChoice(
-          imported,
-          boxCount
-        );
-
-      } catch {
-
-        showToast(
-          "Invalid JSON workspace.",
-          true
-        );
-      }
-
-      event.target.value = "";
-    };
-
-    reader.readAsText(file);
-  }
-);
-
-
-function openImportChoice(
-  imported,
-  boxCount
-) {
-
+function addSpace() {
   openModal({
-    title: "Import Workspace",
-    icon: "fa-solid fa-file-import",
-    step: "Step 1 of 2",
-    text:
-      `Found ${imported.spaces.length} Space(s) and ${boxCount} box(es). Choose how to import them.`,
+    title: "New Space",
+    description: "Create a new workspace.",
+    icon: "fa-layer-group",
+
+    bodyHTML: `
+      <div class="modal-field">
+        <label class="modal-label">
+          Space name
+        </label>
+
+        <input
+          class="modal-input"
+          id="newSpaceName"
+          value="New Space"
+          maxlength="80"
+          autofocus
+        >
+      </div>
+    `,
+
     buttons: [
       {
         label: "Cancel",
-        className: "ghost",
-        close: true
+        action: closeModal
       },
+
       {
-        label: "Add Spaces",
-        className: "",
-        action: () => {
+        label: "Create",
+        className: "primary",
 
-          openModal({
-            title: "Add Imported Spaces",
-            icon: "fa-solid fa-layer-group",
-            step: "Step 2 of 2",
-            text:
-              "Imported Spaces will be added to your existing workspace.",
-            buttons: [
-              {
-                label: "Cancel",
-                className: "ghost",
-                close: true
-              },
-              {
-                label: "Add",
-                className: "primary",
-                action: () => {
+        action: modal => {
+          const name =
+            $("#newSpaceName", modal)
+              ?.value
+              .trim();
 
-                  const existing =
-                    new Set(
-                      state.spaces.map(
-                        space =>
-                          space.id
-                      )
-                    );
+          if (!name) return;
 
-                  imported.spaces.forEach(
-                    space => {
+          const space = {
+            id: uid("space"),
+            name,
+            boxes: []
+          };
 
-                      if (
-                        existing.has(
-                          space.id
-                        )
-                      ) {
-                        space.id =
-                          uid("space");
-                      }
+          state.spaces.push(space);
+          state.activeSpaceId =
+            space.id;
 
-                      space.boxes.forEach(
-                        box => {
-
-                          if (
-                            existing.has(
-                              box.id
-                            )
-                          ) {
-                            box.id =
-                              uid("box");
-                          }
-                        }
-                      );
-
-                      state.spaces.push(
-                        space
-                      );
-                    }
-                  );
-
-                  state.activeSpaceId =
-                    imported.spaces[0].id;
-
-                  saveState();
-                  render();
-
-                  showToast(
-                    "Spaces imported."
-                  );
-                }
-              }
-            ]
-          });
+          saveState();
+          renderTabs();
+          renderActiveSpace();
+          closeModal();
         }
-      },
+      }
+    ]
+  });
+}
+
+function renameSpace(space) {
+  openModal({
+    title: "Rename Space",
+    description: "Choose a new name.",
+    icon: "fa-pen",
+
+    bodyHTML: `
+      <div class="modal-field">
+        <label class="modal-label">
+          Name
+        </label>
+
+        <input
+          class="modal-input"
+          id="renameSpaceInput"
+          value="${escapeHTML(space.name)}"
+          maxlength="80"
+        >
+      </div>
+    `,
+
+    buttons: [
       {
-        label: "Replace",
+        label: "Cancel",
+        action: closeModal
+      },
+
+      {
+        label: "Save",
+        className: "primary",
+
+        action: modal => {
+          const name =
+            $("#renameSpaceInput", modal)
+              ?.value
+              .trim();
+
+          if (!name) return;
+
+          space.name = name;
+
+          saveState();
+          renderTabs();
+          closeModal();
+        }
+      }
+    ]
+  });
+}
+
+function deleteSpace(space) {
+  openModal({
+    title: "Delete Space",
+    description: "This action cannot be undone.",
+    icon: "fa-trash",
+
+    bodyHTML: `
+      <p class="modal-note">
+        You're about to delete
+        <strong>${escapeHTML(space.name)}</strong>.
+        All boxes inside this Space will be removed.
+      </p>
+    `,
+
+    buttons: [
+      {
+        label: "Cancel",
+        action: closeModal
+      },
+
+      {
+        label: "Continue",
         className: "danger",
+
         action: () => {
+          openDeleteConfirmation(space);
+        }
+      }
+    ]
+  });
+}
 
-          openModal({
-            title: "Replace Workspace",
-            icon: "fa-solid fa-triangle-exclamation",
-            step: "Step 2 of 2",
-            text:
-              "Your current workspace will be replaced by the imported JSON. Continue?",
-            buttons: [
-              {
-                label: "Cancel",
-                className: "ghost",
-                close: true
-              },
-              {
-                label: "Replace",
-                className: "danger",
-                action: () => {
+function openDeleteConfirmation(space) {
+  openModal({
+    title: "Final confirmation",
+    description: "Confirm the deletion.",
+    icon: "fa-triangle-exclamation",
 
-                  Object.assign(
-                    state,
-                    imported
-                  );
+    bodyHTML: `
+      <div class="modal-field">
 
-                  saveState();
-                  render();
+        <label class="modal-label">
+          Type the Space name
+        </label>
 
-                  showToast(
-                    "Workspace replaced."
-                  );
-                }
-              }
-            ]
-          });
+        <input
+          class="modal-input"
+          id="deleteSpaceInput"
+          placeholder="${escapeHTML(space.name)}"
+          autocomplete="off"
+        >
+
+      </div>
+    `,
+
+    buttons: [
+      {
+        label: "Cancel",
+        action: closeModal
+      },
+
+      {
+        label: "Delete",
+        className: "danger",
+
+        action: modal => {
+          const value =
+            $("#deleteSpaceInput", modal)
+              ?.value
+              .trim();
+
+          if (value !== space.name) {
+            showToast("Name does not match.");
+            return;
+          }
+
+          state.spaces =
+            state.spaces.filter(
+              item => item.id !== space.id
+            );
+
+          if (!state.spaces.length) {
+            createInitialState();
+          } else if (
+            state.activeSpaceId === space.id
+          ) {
+            state.activeSpaceId =
+              state.spaces[0].id;
+          }
+
+          saveState();
+          renderTabs();
+          renderActiveSpace();
+          closeModal();
         }
       }
     ]
@@ -2783,250 +1913,1512 @@ function openImportChoice(
 }
 
 
-/* =========================================
-   THEME
-========================================= */
+/* =========================
+   BOX ACTIONS
+========================= */
 
-function applyTheme() {
+function nextPosition() {
+  const space = activeSpace();
 
-  document.documentElement
-    .dataset.theme =
-      state.theme;
+  const count =
+    space?.boxes.length || 0;
 
-  const button =
-    $("#themeBtn");
-
-  if (!button) return;
-
-  button.innerHTML =
-    state.theme === "dark"
-      ? '<i class="fa-solid fa-sun"></i>'
-      : '<i class="fa-solid fa-moon"></i>';
-
-  button.title =
-    state.theme === "dark"
-      ? "Switch to Light"
-      : "Switch to Dark";
+  return {
+    x: 120 + (count % 4) * 60,
+    y: 120 + (count % 5) * 50
+  };
 }
 
+function createBox(type) {
+  const space = activeSpace();
 
-$("#themeBtn").addEventListener(
-  "click",
-  () => {
+  if (!space) return;
 
-    state.theme =
-      state.theme === "dark"
-        ? "light"
-        : "dark";
+  const pos =
+    nextPosition();
 
-    saveState();
-    applyTheme();
-  }
-);
+  const box = {
+    id: uid("box"),
+    type,
 
+    title:
+      type === "text"
+        ? "Text"
+        : type === "parent"
+          ? "Folder"
+          : type === "task"
+            ? "Tasks"
+            : type === "link"
+              ? "Link"
+              : "Chart",
 
-/* =========================================
-   FULLSCREEN
-========================================= */
+    content:
+      type === "text"
+        ? "<p></p>"
+        : "",
 
-$("#fullscreenBtn").addEventListener(
-  "click",
-  toggleFullscreen
-);
+    url: "",
 
+    tasks:
+      type === "task"
+        ? [
+            {
+              id: uid("task"),
+              text: "New task",
+              done: false
+            }
+          ]
+        : [],
 
-async function toggleFullscreen() {
+    chart:
+      type === "chart"
+        ? {
+            kind: "bar",
+            description: "",
+            labels: ["A", "B", "C"],
+            values: [10, 20, 30]
+          }
+        : normalizeChart(),
 
-  try {
+    parentId: null,
 
-    if (!document.fullscreenElement) {
+    x: pos.x,
+    y: pos.y,
 
-      await document.documentElement
-        .requestFullscreen();
+    width:
+      type === "chart"
+        ? 380
+        : 340,
 
-    } else {
+    height:
+      type === "chart"
+        ? 300
+        : 220,
 
-      await document.exitFullscreen();
-    }
+    z: 10 + space.boxes.length
+  };
 
-  } catch {
+  space.boxes.push(box);
 
-    showToast(
-      "Fullscreen is not available.",
-      true
-    );
-  }
-}
+  saveState();
+  renderActiveSpace();
 
-
-document.addEventListener(
-  "fullscreenchange",
-  () => {
-
-    const button =
-      $("#fullscreenBtn");
-
-    if (!button) return;
-
-    const active =
-      Boolean(
-        document.fullscreenElement
+  requestAnimationFrame(() => {
+    const el =
+      boxesLayer.querySelector(
+        `[data-box-id="${CSS.escape(box.id)}"]`
       );
 
-    button.innerHTML =
-      active
-        ? '<i class="fa-solid fa-compress"></i>'
-        : '<i class="fa-solid fa-expand"></i>';
-
-    button.title =
-      active
-        ? "Exit Fullscreen"
-        : "Fullscreen";
-  }
-);
-
-
-/* =========================================
-   MOBILE MORE
-========================================= */
-
-$("#mobileMoreBtn").addEventListener(
-  "click",
-  () => {
-
-    openModal({
-      title: "Space Chi",
-      icon: "fa-solid fa-ellipsis",
-      text:
-        "Workspace actions",
-      buttons: [
-        {
-          label: "Import JSON",
-          action: () => {
-            $("#importInput").click();
-          }
-        },
-        {
-          label: "Export JSON",
-          action: () => {
-            $("#exportBtn").click();
-          }
-        },
-        {
-          label:
-            "Toggle Theme",
-          action: () => {
-            $("#themeBtn").click();
-          }
-        },
-        {
-          label:
-            "Fullscreen",
-          action: () => {
-            toggleFullscreen();
-          }
-        }
-      ]
+    el?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "nearest"
     });
+  });
+
+  if (type === "chart") {
+    openChartEditor(box);
   }
-);
+}
 
+function editBox(box) {
+  if (box.type === "chart") {
+    openChartEditor(box);
+    return;
+  }
 
-/* =========================================
-   TOAST
-========================================= */
+  openModal({
+    title: "Edit Box",
+    description: "Change the box title or parent.",
+    icon: "fa-pen",
 
-let toastTimer = null;
+    bodyHTML: `
+      <div class="modal-field">
 
-function showToast(
-  message,
-  error = false
-) {
+        <label class="modal-label">
+          Title
+        </label>
 
-  const toast =
-    $("#toast");
+        <input
+          class="modal-input"
+          id="editBoxTitle"
+          value="${escapeHTML(box.title)}"
+          maxlength="100"
+        >
 
-  toast.textContent =
-    message;
+      </div>
 
-  toast.classList.toggle(
-    "error",
-    error
-  );
+      <div class="modal-field">
 
-  toast.classList.add(
-    "show"
-  );
+        <label class="modal-label">
+          Parent folder
+        </label>
 
-  clearTimeout(toastTimer);
+        <select
+          class="modal-select"
+          id="editBoxParent"
+        ></select>
 
-  toastTimer =
-    setTimeout(
-      () => {
-        toast.classList.remove(
-          "show"
-        );
+      </div>
+    `,
+
+    buttons: [
+      {
+        label: "Cancel",
+        action: closeModal
       },
-      2200
+
+      {
+        label: "Save",
+        className: "primary",
+
+        action: modal => {
+          const title =
+            $("#editBoxTitle", modal)
+              ?.value
+              .trim();
+
+          const parent =
+            $("#editBoxParent", modal)
+              ?.value;
+
+          if (!title) return;
+
+          box.title = title;
+          box.parentId =
+            parent || null;
+
+          saveState();
+          renderActiveSpace();
+          closeModal();
+        }
+      }
+    ]
+  });
+
+  const select =
+    $("#editBoxParent");
+
+  const space = activeSpace();
+
+  const folders =
+    space.boxes.filter(
+      item =>
+        item.type === "parent" &&
+        item.id !== box.id &&
+        !isDescendant(
+          item.id,
+          box.id
+        )
+    );
+
+  const none =
+    document.createElement("option");
+
+  none.value = "";
+  none.textContent = "No parent";
+
+  select.appendChild(none);
+
+  for (const folder of folders) {
+    const option =
+      document.createElement("option");
+
+    option.value = folder.id;
+    option.textContent =
+      folder.title;
+
+    option.selected =
+      folder.id === box.parentId;
+
+    select.appendChild(option);
+  }
+}
+
+function isDescendant(id, ancestorId) {
+  const space = activeSpace();
+
+  let current =
+    space.boxes.find(
+      box => box.id === id
+    );
+
+  const seen = new Set();
+
+  while (current?.parentId) {
+    if (seen.has(current.id)) {
+      return false;
+    }
+
+    seen.add(current.id);
+
+    if (current.parentId === ancestorId) {
+      return true;
+    }
+
+    current =
+      space.boxes.find(
+        box =>
+          box.id === current.parentId
+      );
+  }
+
+  return false;
+}
+
+function deleteBox(box) {
+  const space = activeSpace();
+
+  if (!space) return;
+
+  openModal({
+    title: "Delete Box",
+    description: "Remove this box from the Space.",
+    icon: "fa-trash",
+
+    bodyHTML: `
+      <p class="modal-note">
+        Delete
+        <strong>${escapeHTML(box.title)}</strong>?
+        Child boxes will become independent.
+      </p>
+    `,
+
+    buttons: [
+      {
+        label: "Cancel",
+        action: closeModal
+      },
+
+      {
+        label: "Delete",
+        className: "danger",
+
+        action: () => {
+          for (const child of space.boxes) {
+            if (child.parentId === box.id) {
+              child.parentId = null;
+            }
+          }
+
+          space.boxes =
+            space.boxes.filter(
+              item => item.id !== box.id
+            );
+
+          saveState();
+          renderActiveSpace();
+          closeModal();
+        }
+      }
+    ]
+  });
+}
+
+
+/* =========================
+   CHART MODAL
+========================= */
+
+function openChartEditor(box) {
+  const chart =
+    normalizeChart(box.chart);
+
+  openModal({
+    title: "Chart",
+    description: "Configure your chart.",
+    icon: "fa-chart-simple",
+
+    bodyHTML: `
+      <div class="modal-field">
+
+        <label class="modal-label">
+          Title
+        </label>
+
+        <input
+          class="modal-input"
+          id="chartTitle"
+          value="${escapeHTML(box.title)}"
+          maxlength="100"
+        >
+
+      </div>
+
+      <div class="chart-type-tabs">
+
+        <button
+          class="chart-type ${chart.kind === "bar" ? "active" : ""}"
+          data-chart-kind="bar"
+        >
+          Bar
+        </button>
+
+        <button
+          class="chart-type ${chart.kind === "line" ? "active" : ""}"
+          data-chart-kind="line"
+        >
+          Line
+        </button>
+
+        <button
+          class="chart-type ${chart.kind === "pie" ? "active" : ""}"
+          data-chart-kind="pie"
+        >
+          Pie
+        </button>
+
+      </div>
+
+      <div class="chart-data"></div>
+
+      <button class="add-chart-row">
+        <i class="fa-solid fa-plus"></i>
+        Add data
+      </button>
+    `,
+
+    buttons: [
+      {
+        label: "Cancel",
+        action: closeModal
+      },
+
+      {
+        label: "Save chart",
+        className: "primary",
+
+        action: modal => {
+          const rows =
+            $$(".chart-data-row", modal);
+
+          const labels = [];
+          const values = [];
+
+          for (const row of rows) {
+            const label =
+              $(".chart-label-input", row)
+                .value
+                .trim();
+
+            const value =
+              Number(
+                $(".chart-value-input", row)
+                  .value
+              );
+
+            if (!label) continue;
+
+            labels.push(label);
+            values.push(
+              Number.isFinite(value)
+                ? value
+                : 0
+            );
+          }
+
+          box.title =
+            $("#chartTitle", modal)
+              .value
+              .trim() ||
+            "Chart";
+
+          box.chart = {
+            kind:
+              modal.dataset.chartKind ||
+              chart.kind,
+
+            description: "",
+
+            labels,
+            values
+          };
+
+          saveState();
+          renderActiveSpace();
+          closeModal();
+        }
+      }
+    ]
+  });
+
+  const modal = $(".modal");
+  const data = $(".chart-data", modal);
+
+  modal.dataset.chartKind =
+    chart.kind;
+
+  function renderRows() {
+    data.replaceChildren();
+
+    chart.labels.forEach(
+      (label, index) => {
+        addChartRow(
+          data,
+          label,
+          chart.values[index]
+        );
+      }
+    );
+  }
+
+  function addChartRow(
+    container,
+    label = "",
+    value = 0
+  ) {
+    const row =
+      document.createElement("div");
+
+    row.className =
+      "chart-data-row";
+
+    row.innerHTML = `
+      <input
+        class="chart-label-input"
+        placeholder="Label"
+        value="${escapeHTML(label)}"
+        maxlength="80"
+      >
+
+      <input
+        class="chart-value-input"
+        type="number"
+        placeholder="Value"
+        value="${Number(value) || 0}"
+      >
+
+      <button
+        class="remove-chart-row"
+        title="Remove"
+      >
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    `;
+
+    container.appendChild(row);
+  }
+
+  renderRows();
+
+  $$(".chart-type", modal)
+    .forEach(button => {
+      button.addEventListener(
+        "click",
+        () => {
+          $$(".chart-type", modal)
+            .forEach(
+              item =>
+                item.classList.remove(
+                  "active"
+                )
+            );
+
+          button.classList.add("active");
+
+          modal.dataset.chartKind =
+            button.dataset.chartKind;
+        }
+      );
+    });
+
+  $(".add-chart-row", modal)
+    .addEventListener(
+      "click",
+      () => addChartRow(data)
     );
 }
 
 
-/* =========================================
-   KEYBOARD
-========================================= */
+/* =========================
+   EXPORT
+========================= */
 
-document.addEventListener(
-  "keydown",
-  event => {
+function exportJSON() {
+  const output = {
+    version: state.version,
+    theme: state.theme,
+    spaces: state.spaces,
+    activeSpaceId:
+      state.activeSpaceId
+  };
 
-    if (
-      event.ctrlKey &&
-      event.key.toLowerCase() === "e"
-    ) {
+  const blob =
+    new Blob(
+      [
+        JSON.stringify(
+          output,
+          null,
+          2
+        )
+      ],
+      {
+        type: "application/json"
+      }
+    );
+
+  const url =
+    URL.createObjectURL(blob);
+
+  const link =
+    document.createElement("a");
+
+  link.href = url;
+  link.download =
+    `space-chi-${Date.now()}.json`;
+
+  link.click();
+
+  URL.revokeObjectURL(url);
+
+  showToast("JSON exported.");
+}
+
+
+/* =========================
+   IMPORT
+========================= */
+
+function importJSON(file) {
+  const reader =
+    new FileReader();
+
+  reader.onload = () => {
+    try {
+      const parsed =
+        JSON.parse(
+          String(reader.result)
+        );
+
+      if (
+        !parsed ||
+        !Array.isArray(parsed.spaces)
+      ) {
+        throw new Error();
+      }
+
+      const imported =
+        parsed.spaces.map(
+          normalizeSpace
+        );
+
+      const boxCount =
+        imported.reduce(
+          (sum, space) =>
+            sum + space.boxes.length,
+          0
+        );
+
+      openModal({
+        title: "Import JSON",
+        description: "Choose how to import this workspace.",
+        icon: "fa-file-import",
+
+        bodyHTML: `
+          <p class="modal-note">
+            Found
+            <strong>${imported.length}</strong>
+            Space(s) and
+            <strong>${boxCount}</strong>
+            box(es).
+          </p>
+        `,
+
+        buttons: [
+          {
+            label: "Cancel",
+            action: closeModal
+          },
+
+          {
+            label: "Add Spaces",
+
+            action: () => {
+              const remapped =
+                remapImportedSpaces(
+                  imported
+                );
+
+              state.spaces.push(
+                ...remapped
+              );
+
+              state.activeSpaceId =
+                remapped[0]?.id ||
+                state.activeSpaceId;
+
+              saveState();
+              renderTabs();
+              renderActiveSpace();
+              closeModal();
+
+              showToast(
+                "Spaces imported."
+              );
+            }
+          },
+
+          {
+            label: "Replace",
+            className: "danger",
+
+            action: () => {
+              const remapped =
+                remapImportedSpaces(
+                  imported
+                );
+
+              state.spaces =
+                remapped;
+
+              state.activeSpaceId =
+                remapped[0]?.id ||
+                null;
+
+              if (!state.spaces.length) {
+                createInitialState();
+              }
+
+              saveState();
+              renderTabs();
+              renderActiveSpace();
+              closeModal();
+
+              showToast(
+                "Workspace replaced."
+              );
+            }
+          }
+        ]
+      });
+
+    } catch {
+      showToast(
+        "Invalid JSON file."
+      );
+    }
+  };
+
+  reader.readAsText(file);
+}
+
+function remapImportedSpaces(spaces) {
+  return spaces.map(space => {
+    const oldToNew =
+      new Map();
+
+    const newSpace = {
+      ...space,
+      id: uid("space"),
+      boxes: []
+    };
+
+    for (const box of space.boxes) {
+      oldToNew.set(
+        box.id,
+        uid("box")
+      );
+    }
+
+    for (const oldBox of space.boxes) {
+      const box =
+        normalizeBox(oldBox);
+
+      box.id =
+        oldToNew.get(
+          oldBox.id
+        );
+
+      box.parentId =
+        oldBox.parentId
+          ? oldToNew.get(
+              oldBox.parentId
+            ) || null
+          : null;
+
+      newSpace.boxes.push(box);
+    }
+
+    return newSpace;
+  });
+}
+
+
+/* =========================
+   FULLSCREEN
+========================= */
+
+async function toggleFullscreen() {
+  try {
+    if (!document.fullscreenElement) {
+      await document.documentElement
+        .requestFullscreen();
+    } else {
+      await document.exitFullscreen();
+    }
+  } catch {
+    showToast(
+      "Fullscreen is unavailable."
+    );
+  }
+}
+
+function updateFullscreenButton() {
+  const icon =
+    $("#fullscreenBtn i");
+
+  if (!icon) return;
+
+  icon.className =
+    document.fullscreenElement
+      ? "fa-solid fa-compress"
+      : "fa-solid fa-expand";
+}
+
+
+/* =========================
+   EVENTS
+========================= */
+
+function setupEvents() {
+
+  $("#addSpaceBtn")
+    .addEventListener(
+      "click",
+      addSpace
+    );
+
+  $("#themeBtn")
+    .addEventListener(
+      "click",
+      toggleTheme
+    );
+
+  $("#fullscreenBtn")
+    .addEventListener(
+      "click",
+      toggleFullscreen
+    );
+
+  $("#exportBtn")
+    .addEventListener(
+      "click",
+      exportJSON
+    );
+
+  $("#importBtn")
+    .addEventListener(
+      "click",
+      () =>
+        $("#fileInput").click()
+    );
+
+  $("#fileInput")
+    .addEventListener(
+      "change",
+      event => {
+        const file =
+          event.target.files?.[0];
+
+        if (file) {
+          importJSON(file);
+        }
+
+        event.target.value = "";
+      }
+    );
+
+  document.addEventListener(
+    "fullscreenchange",
+    updateFullscreenButton
+  );
+
+
+  /* Add boxes */
+
+  document.addEventListener(
+    "click",
+    event => {
+      const add =
+        event.target.closest(
+          "[data-add]"
+        );
+
+      if (add) {
+        createBox(
+          add.dataset.add
+        );
+      }
+    }
+  );
+
+
+  /* Tabs */
+
+  tabs.addEventListener(
+    "click",
+    event => {
+      const tab =
+        event.target.closest(".tab");
+
+      if (!tab) return;
+
+      const space =
+        state.spaces.find(
+          item =>
+            item.id ===
+            tab.dataset.spaceId
+        );
+
+      if (!space) return;
+
+      if (
+        event.target.closest(".tab-menu")
+      ) {
+        openSpaceMenu(space);
+        return;
+      }
+
+      state.activeSpaceId =
+        space.id;
+
+      saveState();
+
+      renderTabs();
+      renderActiveSpace();
+    }
+  );
+
+
+  /* Double click tab rename */
+
+  tabs.addEventListener(
+    "dblclick",
+    event => {
+      const tab =
+        event.target.closest(".tab");
+
+      if (!tab) return;
+
+      const space =
+        state.spaces.find(
+          item =>
+            item.id ===
+            tab.dataset.spaceId
+        );
+
+      if (space) {
+        renameSpace(space);
+      }
+    }
+  );
+
+
+  /* Box events */
+
+  boxesLayer.addEventListener(
+    "pointerdown",
+    event => {
+      const resize =
+        event.target.closest(
+          ".box-resize"
+        );
+
+      if (resize) {
+        const box =
+          resize.closest(".box");
+
+        if (box) {
+          startResize(
+            event,
+            box
+          );
+        }
+
+        return;
+      }
+
+      const header =
+        event.target.closest(
+          ".box-header"
+        );
+
+      if (!header) return;
+
+      const box =
+        header.closest(".box");
+
+      if (!box) return;
+
+      startDrag(
+        event,
+        box
+      );
+    }
+  );
+
+
+  boxesLayer.addEventListener(
+    "pointermove",
+    event => {
+
+      if (dragState) {
+        const box =
+          boxesLayer.querySelector(
+            `[data-box-id="${CSS.escape(dragState.boxId)}"]`
+          );
+
+        if (box) {
+          moveDrag(
+            event,
+            box
+          );
+        }
+
+        return;
+      }
+
+      if (resizeState) {
+        moveResize(event);
+      }
+
+    }
+  );
+
+
+  boxesLayer.addEventListener(
+    "pointerup",
+    event => {
+
+      if (dragState) {
+        const box =
+          boxesLayer.querySelector(
+            `[data-box-id="${CSS.escape(dragState.boxId)}"]`
+          );
+
+        if (box) {
+          endDrag(
+            event,
+            box
+          );
+        }
+
+        return;
+      }
+
+      if (resizeState) {
+        endResize(event);
+      }
+
+    }
+  );
+
+
+  boxesLayer.addEventListener(
+    "pointercancel",
+    event => {
+
+      if (dragState) {
+        const box =
+          boxesLayer.querySelector(
+            `[data-box-id="${CSS.escape(dragState.boxId)}"]`
+          );
+
+        if (box) {
+          endDrag(
+            event,
+            box
+          );
+        }
+      }
+
+      if (resizeState) {
+        endResize(event);
+      }
+
+    }
+  );
+
+
+  /* Box buttons */
+
+  boxesLayer.addEventListener(
+    "click",
+    event => {
+
+      const boxEl =
+        event.target.closest(".box");
+
+      if (!boxEl) return;
+
+      const box =
+        getBox(
+          boxEl.dataset.boxId
+        );
+
+      if (!box) return;
+
+
+      if (
+        event.target.closest(
+          ".delete-box"
+        )
+      ) {
+        deleteBox(box);
+        return;
+      }
+
+
+      if (
+        event.target.closest(
+          ".edit-box"
+        )
+      ) {
+        editBox(box);
+        return;
+      }
+
+
+      if (
+        event.target.closest(
+          ".edit-chart"
+        )
+      ) {
+        openChartEditor(box);
+        return;
+      }
+
+
+      if (
+        event.target.closest(
+          ".add-task"
+        )
+      ) {
+        box.tasks.push({
+          id: uid("task"),
+          text: "New task",
+          done: false
+        });
+
+        saveState();
+
+        const body =
+          $(".box-body", boxEl);
+
+        renderTaskBox(
+          box,
+          body
+        );
+
+        return;
+      }
+
+
+      if (
+        event.target.closest(
+          ".task-check"
+        )
+      ) {
+        const row =
+          event.target.closest(
+            ".task-row"
+          );
+
+        const task =
+          box.tasks.find(
+            item =>
+              item.id ===
+              row.dataset.taskId
+          );
+
+        if (task) {
+          task.done = !task.done;
+
+          saveState();
+
+          renderTaskBox(
+            box,
+            $(".box-body", boxEl)
+          );
+        }
+
+        return;
+      }
+
+
+      if (
+        event.target.closest(
+          ".task-remove"
+        )
+      ) {
+        const row =
+          event.target.closest(
+            ".task-row"
+          );
+
+        box.tasks =
+          box.tasks.filter(
+            task =>
+              task.id !==
+              row.dataset.taskId
+          );
+
+        saveState();
+
+        renderTaskBox(
+          box,
+          $(".box-body", boxEl)
+        );
+
+        return;
+      }
+
+
+      if (
+        event.target.closest(
+          ".link-save"
+        )
+      ) {
+        const input =
+          $(".link-input", boxEl);
+
+        const url =
+          normalizeURL(
+            input.value
+          );
+
+        if (!url) {
+          showToast(
+            "Enter a valid HTTP or HTTPS URL."
+          );
+          return;
+        }
+
+        box.url = url;
+
+        saveState();
+
+        updateLinkPreview(
+          box,
+          $(".box-body", boxEl)
+        );
+
+        return;
+      }
+
+    }
+  );
+
+
+  /* Rich text */
+
+  boxesLayer.addEventListener(
+    "mousedown",
+    event => {
+      const button =
+        event.target.closest(
+          ".rich-tool"
+        );
+
+      if (!button) return;
 
       event.preventDefault();
 
-      $("#exportBtn").click();
+      const boxEl =
+        button.closest(".box");
+
+      const box =
+        getBox(
+          boxEl.dataset.boxId
+        );
+
+      if (!box) return;
+
+      if (
+        button.hasAttribute(
+          "data-rich-link"
+        )
+      ) {
+        openRichLinkModal(
+          boxEl
+        );
+
+        return;
+      }
+
+      const editor =
+        $(".rich-content", boxEl);
+
+      editor.focus();
+
+      document.execCommand(
+        button.dataset.command,
+        false,
+        button.dataset.value || null
+      );
+
+      box.content =
+        normalizeHTML(
+          editor.innerHTML
+        );
+
+      saveState();
     }
+  );
 
-    if (
-      event.ctrlKey &&
-      event.key.toLowerCase() === "o"
-    ) {
 
-      event.preventDefault();
+  boxesLayer.addEventListener(
+    "input",
+    event => {
 
-      $("#importBtn").click();
+      const boxEl =
+        event.target.closest(".box");
+
+      if (!boxEl) return;
+
+      const box =
+        getBox(
+          boxEl.dataset.boxId
+        );
+
+      if (!box) return;
+
+
+      if (
+        event.target.matches(
+          ".rich-content"
+        )
+      ) {
+        box.content =
+          normalizeHTML(
+            event.target.innerHTML
+          );
+
+        saveState();
+      }
+
+
+      if (
+        event.target.matches(
+          ".task-text"
+        )
+      ) {
+        const row =
+          event.target.closest(
+            ".task-row"
+          );
+
+        const task =
+          box.tasks.find(
+            item =>
+              item.id ===
+              row.dataset.taskId
+          );
+
+        if (task) {
+          task.text =
+            event.target.textContent
+              .trim();
+
+          saveState();
+        }
+      }
+
     }
+  );
 
-    if (
-      event.key === "Escape" &&
-      document.fullscreenElement
-    ) {
 
-      document.exitFullscreen();
+  /* Space viewport */
+
+  viewport.addEventListener(
+    "scroll",
+    () => {
+      /*
+        Scroll itself does not alter box
+        coordinates. No full render here.
+      */
+    },
+    {
+      passive: true
     }
-  }
-);
+  );
 
 
-/* =========================================
-   INITIALIZE
-========================================= */
+  /* Escape */
 
-loadState();
+  document.addEventListener(
+    "keydown",
+    event => {
+      if (
+        event.key === "Escape" &&
+        !modalRoot.hidden
+      ) {
+        closeModal();
+      }
+    }
+  );
 
-render();
+}
 
-window.addEventListener(
-  "resize",
-  () => {
-    updateCanvasSize();
-    renderConnections();
-  }
-);
 
-console.log(
-  "Space Chi initialized."
-);
+/* =========================
+   SPACE MENU
+========================= */
+
+function openSpaceMenu(space) {
+  openModal({
+    title: space.name,
+    description: "Space options.",
+    icon: "fa-layer-group",
+
+    bodyHTML: `
+      <div
+        style="
+          display:grid;
+          gap:7px;
+        "
+      >
+
+        <button
+          class="btn"
+          id="menuRename"
+        >
+          <i class="fa-solid fa-pen"></i>
+          Rename Space
+        </button>
+
+        <button
+          class="btn"
+          id="menuDelete"
+        >
+          <i class="fa-solid fa-trash"></i>
+          Delete Space
+        </button>
+
+      </div>
+    `,
+
+    buttons: [
+      {
+        label: "Close",
+        action: closeModal
+      }
+    ]
+  });
+
+  $("#menuRename")
+    .addEventListener(
+      "click",
+      () => renameSpace(space)
+    );
+
+  $("#menuDelete")
+    .addEventListener(
+      "click",
+      () => deleteSpace(space)
+    );
+}
+
+
+/* =========================
+   RICH LINK MODAL
+========================= */
+
+function openRichLinkModal(boxEl) {
+  const box =
+    getBox(
+      boxEl.dataset.boxId
+    );
+
+  if (!box) return;
+
+  const editor =
+    $(".rich-content", boxEl);
+
+  openModal({
+    title: "Insert Link",
+    description: "Enter an HTTP or HTTPS URL.",
+    icon: "fa-link",
+
+    bodyHTML: `
+      <div class="modal-field">
+
+        <label class="modal-label">
+          URL
+        </label>
+
+        <input
+          class="modal-input"
+          id="richLinkURL"
+          placeholder="https://example.com"
+          type="url"
+        >
+
+      </div>
+    `,
+
+    buttons: [
+      {
+        label: "Cancel",
+        action: closeModal
+      },
+
+      {
+        label: "Insert",
+        className: "primary",
+
+        action: modal => {
+          const url =
+            normalizeURL(
+              $("#richLinkURL", modal)
+                .value
+            );
+
+          if (!url) {
+            showToast(
+              "Enter a valid URL."
+            );
+            return;
+          }
+
+          editor.focus();
+
+          document.execCommand(
+            "createLink",
+            false,
+            url
+          );
+
+          box.content =
+            normalizeHTML(
+              editor.innerHTML
+            );
+
+          saveState();
+
+          closeModal();
+        }
+      }
+    ]
+  });
+}
+
+
+/* =========================
+   INIT
+========================= */
+
+function init() {
+  loadState();
+
+  applyTheme();
+
+  renderTabs();
+  renderActiveSpace();
+
+  setupEvents();
+
+  updateFullscreenButton();
+}
+
+init();
