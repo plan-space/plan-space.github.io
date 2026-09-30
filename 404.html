@@ -1,33 +1,17 @@
 <!DOCTYPE html>
-<html lang="en" dir="ltr">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
-  >
-
-  <meta
-    name="theme-color"
-    content="#08090a"
-  >
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#080b10">
 
   <title>404 — Space Chi</title>
 
-  <link
-    rel="preconnect"
-    href="https://fonts.googleapis.com"
-  >
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
   <link
-    rel="preconnect"
-    href="https://fonts.gstatic.com"
-    crossorigin
-  >
-
-  <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
     rel="stylesheet"
   >
 
@@ -36,217 +20,81 @@
     href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
   >
 
-  <!-- Same CSS as the main page -->
   <link rel="stylesheet" href="style.css">
 </head>
 
-<body class="not-found-page">
+<body class="error-page">
 
-<header class="topbar">
+  <header class="topbar">
 
-  <div class="brand">
-
-    <div class="brand-mark">
-      <i class="fa-solid fa-layer-group"></i>
+    <div class="brand">
+      <span>Space Chi</span>
     </div>
 
-    <div class="brand-name">
-      Space Chi
-    </div>
+  </header>
 
-  </div>
 
-  <div class="spaces-area">
+  <main class="error-screen">
 
-    <div class="tabs">
+    <div class="error-card">
 
-      <div class="tab active">
+      <div class="error-icon">
+        <i class="fa-solid fa-compass-drafting"></i>
+      </div>
 
-        <i class="fa-solid fa-triangle-exclamation tab-icon"></i>
+      <div class="error-code">
+        404
+      </div>
 
-        <div class="tab-name">
-          Lost Space
-        </div>
+      <h1>
+        Space not found.
+      </h1>
 
+      <p>
+        The space you're looking for doesn't exist,
+        or this path has drifted somewhere else.
+      </p>
+
+      <div class="error-actions">
+
+        <a
+          href="./"
+          class="primary-action"
+        >
+          <i class="fa-solid fa-arrow-left"></i>
+          Back to Space Chi
+        </a>
+
+        <button
+          class="secondary-action"
+          id="backButton"
+        >
+          <i class="fa-solid fa-clock-rotate-left"></i>
+          Go Back
+        </button>
+
+      </div>
+
+      <div class="error-path">
+        <span>STATUS</span>
+        <code>
+          404 / SPACE_NOT_FOUND
+        </code>
       </div>
 
     </div>
 
-  </div>
-
-  <div class="quick-actions">
-
-    <button
-      class="quick-btn"
-      id="backBtn"
-      title="Go Back"
-    >
-      <i class="fa-solid fa-arrow-left"></i>
-    </button>
-
-    <button
-      class="quick-btn"
-      id="homeBtn"
-      title="Go Home"
-    >
-      <i class="fa-solid fa-house"></i>
-    </button>
-
-  </div>
-
-</header>
+  </main>
 
 
-<main class="not-found-main">
-
-  <section class="not-found-card">
-
-    <svg
-      class="not-found-graph"
-      viewBox="0 0 500 170"
-      aria-hidden="true"
-    >
-
-      <path
-        d="
-          M55 90
-          C130 20,
-          170 20,
-          230 85
-
-          M230 85
-          C300 150,
-          350 150,
-          445 65
-
-          M90 125
-          C170 125,
-          195 75,
-          280 45
-        "
-      />
-
-      <line
-        x1="55"
-        y1="90"
-        x2="55"
-        y2="90"
-      />
-
-      <circle
-        cx="55"
-        cy="90"
-        r="8"
-      />
-
-      <circle
-        cx="230"
-        cy="85"
-        r="11"
-      />
-
-      <circle
-        cx="445"
-        cy="65"
-        r="8"
-      />
-
-      <circle
-        cx="90"
-        cy="125"
-        r="6"
-      />
-
-      <circle
-        cx="280"
-        cy="45"
-        r="7"
-      />
-
-    </svg>
-
-
-    <div class="not-found-code">
-      404
-    </div>
-
-    <h1 class="not-found-title">
-      This Space doesn't exist.
-    </h1>
-
-    <p class="not-found-text">
-      The Space you're looking for may have been
-      moved, deleted, or never existed in the first place.
-    </p>
-
-    <div class="not-found-actions">
-
-      <button
-        class="btn primary"
-        id="homeBtn2"
-      >
-        <i class="fa-solid fa-house"></i>
-        Go Home
-      </button>
-
-      <button
-        class="btn"
-        id="backBtn2"
-      >
-        <i class="fa-solid fa-arrow-left"></i>
-        Go Back
-      </button>
-
-    </div>
-
-  </section>
-
-</main>
-
-
-<script>
-
-  const homeButtons = [
-    document.getElementById("homeBtn"),
-    document.getElementById("homeBtn2")
-  ];
-
-  const backButtons = [
-    document.getElementById("backBtn"),
-    document.getElementById("backBtn2")
-  ];
-
-  homeButtons.forEach(button => {
-
-    button?.addEventListener(
-      "click",
-      () => {
-        window.location.href = "./";
-      }
-    );
-
-  });
-
-  backButtons.forEach(button => {
-
-    button?.addEventListener(
-      "click",
-      () => {
-
-        if (
-          history.length > 1
-        ) {
-          history.back();
-        } else {
-          window.location.href = "./";
-        }
-
-      }
-    );
-
-  });
-
-</script>
+  <script>
+    document
+      .getElementById("backButton")
+      ?.addEventListener(
+        "click",
+        () => history.back()
+      );
+  </script>
 
 </body>
 </html>
