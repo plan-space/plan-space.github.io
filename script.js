@@ -959,7 +959,14 @@
   }
 
   function viewCenter(){
-    return{x:D.scroll.scrollLeft+D.scroll.clientWidth/2-160, y:D.scroll.scrollTop+D.scroll.clientHeight/2-110};
+    // getBoundingClientRect is reliable on mobile unlike clientWidth/Height which can be 0
+    var rect=D.scroll.getBoundingClientRect();
+    var vw=rect.width  || window.innerWidth;
+    var vh=rect.height || window.innerHeight;
+    var x=D.scroll.scrollLeft + vw/2 - 160;
+    var y=D.scroll.scrollTop  + vh/2 - 110;
+    // clamp so box never spawns off-canvas
+    return { x:Math.max(20,x), y:Math.max(20,y) };
   }
 
   function openNewSpace(){
