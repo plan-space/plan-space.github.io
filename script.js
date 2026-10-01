@@ -1,1156 +1,1122 @@
 (function () {
   "use strict";
 
-  /* ═══════════════════════════════════════════
-     404 page — minimal bootstrap
-     ═══════════════════════════════════════════ */
+  /* ───────────────────────────────────────────
+     404 bootstrap
+  ─────────────────────────────────────────── */
   if (document.body.classList.contains("page-404")) {
-    var pathEl = document.getElementById("term-path");
-    if (pathEl) pathEl.textContent = location.pathname || "/unknown";
-    var btnHome = document.getElementById("go-home");
-    var btnBack = document.getElementById("go-back");
-    if (btnHome) btnHome.addEventListener("click", function () { location.href = "index.html"; });
-    if (btnBack) btnBack.addEventListener("click", function () {
-      if (history.length > 1) history.back();
-      else location.href = "index.html";
-    });
+    var p = document.getElementById("term-path");
+    if (p) p.textContent = location.pathname || "/unknown";
+    var gh = document.getElementById("go-home");
+    var gb = document.getElementById("go-back");
+    if (gh) gh.addEventListener("click", function () { location.href = "index.html"; });
+    if (gb) gb.addEventListener("click", function () { history.length > 1 ? history.back() : (location.href = "index.html"); });
     return;
   }
 
-  /* ═══════════════════════════════════════════
+  /* ───────────────────────────────────────────
      Constants
-     ═══════════════════════════════════════════ */
-  var STORAGE_KEY = "plan_space_v2";
-  var PASTELS = ["#F4B8C4","#F6C6A8","#F3DFA2","#B8D8C0","#B9DDD5",
-                 "#C9B8E8","#D5C7EA","#E8AFAF","#C5D6B7","#BFD7EA"];
-  var BOX_TYPES = { text:"متن", folder:"پوشه", task:"تسک", link:"لینک", chart:"نمودار" };
-  var MIN_W = 220, MIN_H = 140, MAX_W = 720, MAX_H = 640;
-  var ALLOWED_TAGS = new Set([
-    "B","I","U","S","STRONG","EM","H2","H3","P","BR",
-    "UL","OL","LI","BLOCKQUOTE","A","DIV","SPAN"
-  ]);
+  ─────────────────────────────────────────── */
+  var KEY = "planspace_v3";
+  var PASTELS = ["#F4B8C4","#F6C6A8","#F3DFA2","#B8D8C0","#B9DDD5","#C9B8E8","#D5C7EA","#E8AFAF","#C5D6B7","#BFD7EA"];
+  var TYPES = { text:"متن", folder:"پوشه", task:"تسک", link:"لینک", image:"عکس", embed:"امبد", timer:"تایمر", chart:"نمودار" };
+  var MIN_W = 220, MIN_H = 140, MAX_W = 800, MAX_H = 700;
+  var SAFE_TAGS = new Set(["B","I","U","S","STRONG","EM","H2","H3","P","BR","UL","OL","LI","BLOCKQUOTE","A","DIV","SPAN"]);
 
-  /* ═══════════════════════════════════════════
-     DOM refs
-     ═══════════════════════════════════════════ */
-  function q(id) { return document.getElementById(id); }
-  var DOM = {
-    tabs:       q("space-tabs"),
-    boxes:      q("boxes-layer"),
-    conn:       q("connections"),
-    empty:      q("empty-state"),
-    modal:      q("modal-root"),
-    toast:      q("toast-root"),
-    search:     q("search-input"),
-    scroll:     q("canvas-scroll"),
-    importFile: q("import-file"),
-    themeBtn:   q("btn-theme"),
-    fsBtn:      q("btn-fullscreen"),
+  /* ───────────────────────────────────────────
+     DOM
+  ─────────────────────────────────────────── */
+  function $i(id) { return document.getElementById(id); }
+  var D = {
+    tabs:    $i("space-tabs"),
+    boxes:   $i("boxes-layer"),
+    conn:    $i("connections"),
+    empty:   $i("empty-state"),
+    modal:   $i("modal-root"),
+    toast:   $i("toast-root"),
+    search:  $i("search-input"),
+    scroll:  $i("canvas-scroll"),
+    file:    $i("import-file"),
+    imgFile: $i("img-file"),
+    themeB:  $i("btn-theme"),
+    fsB:     $i("btn-fullscreen"),
   };
 
-  /* ═══════════════════════════════════════════
-     Utilities
-     ═══════════════════════════════════════════ */
+  /* ───────────────────────────────────────────
+     Util
+  ─────────────────────────────────────────── */
   function uid() {
-    try { if (crypto.randomUUID) return crypto.randomUUID(); } catch (_) {}
-    return "id-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 9);
+    try { if (crypto.randomUUID) return crypto.randomUUID(); } catch(_) {}
+    return "x" + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
   }
-
   function esc(s) {
-    return String(s).replace(/[&<>"']/g, function (c) {
+    return String(s==null?"":s).replace(/[&<>"']/g, function(c){
       return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
     });
   }
+  function safeUrl(u) { return /^https?:\/\//i.test(String(u||"")); }
+  function clk(id, fn) { var e=$i(id); if(e) e.addEventListener("click",fn); }
 
-  function isSafeUrl(u) { return /^https?:\/\//i.test(String(u || "")); }
+  /* ───────────────────────────────────────────
+     State / Storage
+  ─────────────────────────────────────────── */
+  var state;
+  var saveTimer = 0;
+  var pendingImport = null;
 
-  function on(id, fn) {
-    var el = q(id);
-    if (el) el.addEventListener("click", fn);
-  }
-
-  /* ═══════════════════════════════════════════
-     State helpers
-     ═══════════════════════════════════════════ */
-  function defaultState() {
+  function mkState() {
     var id = uid();
-    return {
-      version: 2,
-      theme: "dark",
-      spaces: [{ id: id, name: "اسپیس من", boxes: [] }],
-      activeSpaceId: id
-    };
+    return { version:3, theme:"dark", spaces:[{id:id, name:"اسپیس من", boxes:[]}], activeSpaceId:id };
   }
 
-  function normalizeBox(b) {
+  function normBox(b) {
     if (!b || typeof b !== "object") b = {};
-    var type = ["text","folder","task","link","chart"].includes(b.type) ? b.type : "text";
-    var chart = b.chart && typeof b.chart === "object" ? b.chart : {};
+    var t = Object.keys(TYPES).includes(b.type) ? b.type : "text";
+    var ch = (b.chart && typeof b.chart==="object") ? b.chart : {};
     return {
-      id:      typeof b.id === "string" && b.id ? b.id : uid(),
-      type:    type,
-      title:   String(b.title  || BOX_TYPES[type] || "باکس"),
-      content: String(b.content || ""),
-      url:     String(b.url    || ""),
-      tasks: Array.isArray(b.tasks) ? b.tasks.map(function (t) {
-        return {
-          id:   typeof t.id === "string" && t.id ? t.id : uid(),
-          text: String(t.text || ""),
-          done: !!t.done
-        };
-      }) : [],
+      id:       (typeof b.id==="string" && b.id) ? b.id : uid(),
+      type:     t,
+      title:    String(b.title || TYPES[t]),
+      content:  String(b.content || ""),
+      url:      String(b.url || ""),
+      imageData:String(b.imageData || ""),
+      embedUrl: String(b.embedUrl || ""),
+      tasks: Array.isArray(b.tasks) ? b.tasks.map(function(t){ return {
+        id: (typeof t.id==="string"&&t.id)?t.id:uid(),
+        text: String(t.text||""), done:!!t.done
+      }; }) : [],
       chart: {
-        kind:        ["bar","line","pie"].includes(chart.kind) ? chart.kind : "bar",
-        description: String(chart.description || ""),
-        labels:      Array.isArray(chart.labels) ? chart.labels.map(String) : [],
-        values:      Array.isArray(chart.values) ? chart.values.map(function (n) { return Number(n) || 0; }) : []
+        kind:   ["bar","line","pie"].includes(ch.kind)?ch.kind:"bar",
+        desc:   String(ch.desc||""),
+        labels: Array.isArray(ch.labels)?ch.labels.map(String):["الف","ب","ج"],
+        values: Array.isArray(ch.values)?ch.values.map(function(n){return Number(n)||0;}):[12,8,16]
       },
-      parentId: typeof b.parentId === "string" && b.parentId ? b.parentId : null,
-      x:        Math.max(0,    Number(b.x)      || 80),
-      y:        Math.max(0,    Number(b.y)      || 80),
-      width:    Math.max(MIN_W, Number(b.width)  || 320),
-      height:   Math.max(MIN_H, Number(b.height) || 220),
-      z:        Number(b.z) || 1
+      timer: {
+        mode:      ["clock","countdown","pomodoro"].includes(b.timer&&b.timer.mode)?b.timer.mode:"clock",
+        minutes:   Number((b.timer&&b.timer.minutes)||25),
+      },
+      parentId: (typeof b.parentId==="string"&&b.parentId)?b.parentId:null,
+      x:      Math.max(0,   Number(b.x)||80),
+      y:      Math.max(0,   Number(b.y)||80),
+      width:  Math.max(MIN_W, Number(b.width)||320),
+      height: Math.max(MIN_H, Number(b.height)||220),
+      z:      Number(b.z)||1
     };
   }
 
-  function normalizeState(raw) {
-    var s = raw && typeof raw === "object" ? raw : {};
-    var out = defaultState();
-    out.theme = s.theme === "light" ? "light" : "dark";
+  function normState(raw) {
+    var s = (raw && typeof raw==="object") ? raw : {};
+    var out = mkState();
+    out.theme = s.theme==="light" ? "light" : "dark";
     if (Array.isArray(s.spaces) && s.spaces.length) {
-      out.spaces = s.spaces.map(function (sp, i) {
-        var sid = typeof sp.id === "string" && sp.id ? sp.id : uid();
-        var boxes = Array.isArray(sp.boxes) ? sp.boxes.map(normalizeBox) : [];
-        return { id: sid, name: String(sp.name || ("اسپیس " + (i + 1))), boxes: boxes };
+      out.spaces = s.spaces.map(function(sp,i){
+        return {
+          id:    (typeof sp.id==="string"&&sp.id)?sp.id:uid(),
+          name:  String(sp.name||"اسپیس "+(i+1)),
+          boxes: Array.isArray(sp.boxes)?sp.boxes.map(normBox):[]
+        };
       });
     }
-    var found = out.spaces.some(function (sp) { return sp.id === s.activeSpaceId; });
-    out.activeSpaceId = found ? s.activeSpaceId : out.spaces[0].id;
+    out.activeSpaceId = out.spaces.some(function(s){return s.id===raw.activeSpaceId;})?raw.activeSpaceId:out.spaces[0].id;
     return out;
   }
-
-  /* ═══════════════════════════════════════════
-     Persistence
-     ═══════════════════════════════════════════ */
-  var state = defaultState();
-  var saveTimer = 0;
 
   function load() {
     try {
-      var raw = localStorage.getItem(STORAGE_KEY);
-      // also migrate old key
-      if (!raw) raw = localStorage.getItem("plan_space_state_v1");
-      state = raw ? normalizeState(JSON.parse(raw)) : defaultState();
-    } catch (_) {
-      state = defaultState();
-    }
+      var raw = localStorage.getItem(KEY) || localStorage.getItem("plan_space_v2") || localStorage.getItem("plan_space_state_v1");
+      state = raw ? normState(JSON.parse(raw)) : mkState();
+    } catch(_) { state = mkState(); }
   }
 
-  function persist() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
-    catch (_) { showToast("ذخیره ممکن نیست"); }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); }
+    catch(_) { toast("ذخیره ممکن نیست — حافظه پر است"); }
   }
 
-  function scheduleSave() {
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(persist, 300);
-  }
+  function lazySave() { clearTimeout(saveTimer); saveTimer = setTimeout(save, 300); }
 
-  /* ═══════════════════════════════════════════
+  /* ───────────────────────────────────────────
      Space helpers
-     ═══════════════════════════════════════════ */
+  ─────────────────────────────────────────── */
   function activeSpace() {
-    return state.spaces.find(function (s) { return s.id === state.activeSpaceId; }) || state.spaces[0];
+    return state.spaces.find(function(s){return s.id===state.activeSpaceId;})||state.spaces[0];
+  }
+  function nextZ() { return activeSpace().boxes.reduce(function(m,b){return Math.max(m,b.z||1);},0)+1; }
+  function mkBox(type, x, y) {
+    return normBox({ type:type, x:x, y:y, z:nextZ(),
+      height: (type==="chart"||type==="timer"||type==="embed") ? 280 : 220 });
   }
 
-  function nextZ() {
-    return activeSpace().boxes.reduce(function (m, b) { return Math.max(m, b.z || 1); }, 0) + 1;
-  }
-
-  function defaultBox(type, x, y) {
-    return {
-      id: uid(), type: type,
-      title: BOX_TYPES[type] || "باکس",
-      content: "", url: "",
-      tasks: [],
-      chart: { kind:"bar", description:"", labels:["الف","ب","ج"], values:[12,8,16] },
-      parentId: null,
-      x: x, y: y,
-      width: 320, height: type === "chart" ? 280 : 220,
-      z: nextZ()
-    };
-  }
-
-  /* ═══════════════════════════════════════════
-     Tree helpers
-     ═══════════════════════════════════════════ */
-  function descendantsOf(id, boxes) {
-    var map = new Map();
-    boxes.forEach(function (b) {
-      if (!map.has(b.parentId)) map.set(b.parentId, []);
-      map.get(b.parentId).push(b.id);
-    });
-    var out = new Set(), stack = [id];
-    while (stack.length) {
-      var cur = stack.pop();
-      (map.get(cur) || []).forEach(function (cid) {
-        if (!out.has(cid)) { out.add(cid); stack.push(cid); }
-      });
-    }
+  /* ───────────────────────────────────────────
+     Tree
+  ─────────────────────────────────────────── */
+  function descs(id, boxes) {
+    var map=new Map(), out=new Set(), stack=[id];
+    boxes.forEach(function(b){ if(!map.has(b.parentId))map.set(b.parentId,[]); map.get(b.parentId).push(b.id); });
+    while(stack.length){ var c=stack.pop(); (map.get(c)||[]).forEach(function(cid){ if(!out.has(cid)){out.add(cid);stack.push(cid);} }); }
     return out;
   }
-
-  function wouldCycle(childId, parentId, boxes) {
-    if (!parentId) return false;
-    if (childId === parentId) return true;
-    return descendantsOf(childId, boxes).has(parentId);
+  function wouldCycle(child, parent, boxes) {
+    return parent && (child===parent || descs(child,boxes).has(parent));
   }
 
-  /* ═══════════════════════════════════════════
+  /* ───────────────────────────────────────────
      Theme
-     ═══════════════════════════════════════════ */
+  ─────────────────────────────────────────── */
   function applyTheme() {
     document.documentElement.setAttribute("data-theme", state.theme);
-    var icon = state.theme === "dark" ? "fa-moon" : "fa-sun";
-    var html = '<i class="fa-solid ' + icon + '" aria-hidden="true"></i>';
-    [DOM.themeBtn, q("mob-theme")].forEach(function (btn) { if (btn) btn.innerHTML = html; });
+    var ic = state.theme==="dark"?"fa-moon":"fa-sun";
+    var html = '<i class="fa-solid '+ic+'" aria-hidden="true"></i>';
+    [D.themeB, $i("mob-theme")].forEach(function(b){ if(b) b.innerHTML=html; });
   }
+  function toggleTheme() { state.theme=state.theme==="dark"?"light":"dark"; save(); applyTheme(); }
 
-  function toggleTheme() {
-    state.theme = state.theme === "dark" ? "light" : "dark";
-    persist(); applyTheme();
-  }
-
-  /* ═══════════════════════════════════════════
+  /* ───────────────────────────────────────────
      Toast
-     ═══════════════════════════════════════════ */
-  function showToast(msg) {
-    var el = document.createElement("div");
-    el.className = "toast";
-    el.textContent = msg;
-    DOM.toast.appendChild(el);
-    setTimeout(function () { el.remove(); }, 2800);
+  ─────────────────────────────────────────── */
+  function toast(msg) {
+    var el=document.createElement("div"); el.className="toast"; el.textContent=msg;
+    D.toast.appendChild(el); setTimeout(function(){el.remove();},2800);
   }
 
-  /* ═══════════════════════════════════════════
+  /* ───────────────────────────────────────────
      Modal
-     ═══════════════════════════════════════════ */
-  var _lastFocus = null;
-
+  ─────────────────────────────────────────── */
+  var lastFocus=null;
   function openModal(html, opts) {
-    var lock = !!(opts && opts.lock);
-    _lastFocus = document.activeElement;
-    DOM.modal.hidden = false;
-    DOM.modal.innerHTML = '<div class="modal" role="dialog" aria-modal="true">' + html + "</div>";
-    DOM.modal.dataset.lock = lock ? "1" : "0";
-    var first = DOM.modal.querySelector("input,button,select,textarea");
-    if (first) first.focus();
-    DOM.modal.onclick = function (e) { if (e.target === DOM.modal && !lock) closeModal(); };
+    var lock=!!(opts&&opts.lock);
+    lastFocus=document.activeElement;
+    D.modal.hidden=false;
+    D.modal.innerHTML='<div class="modal" role="dialog" aria-modal="true">'+html+'</div>';
+    D.modal.dataset.lock=lock?"1":"0";
+    var first=D.modal.querySelector("input,button,select,textarea");
+    if(first) first.focus();
+    D.modal.onclick=function(e){ if(e.target===D.modal&&!lock) closeModal(); };
   }
-
   function closeModal() {
-    DOM.modal.hidden = true;
-    DOM.modal.innerHTML = "";
-    if (_lastFocus) { try { _lastFocus.focus(); } catch (_) {} }
+    D.modal.hidden=true; D.modal.innerHTML="";
+    if(lastFocus){ try{lastFocus.focus();}catch(_){} }
   }
-
-  function bind(id, fn) {
-    var el = q(id);
-    if (el) el.addEventListener("click", fn);
-  }
-
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape" && !DOM.modal.hidden && DOM.modal.dataset.lock !== "1") closeModal();
+  function mbind(id,fn){ var e=$i(id); if(e) e.addEventListener("click",fn); }
+  document.addEventListener("keydown",function(e){
+    if(e.key==="Escape"&&!D.modal.hidden&&D.modal.dataset.lock!=="1") closeModal();
   });
 
-  /* ═══════════════════════════════════════════
-     HTML sanitizer
-     ═══════════════════════════════════════════ */
-  function sanitizeHtml(html) {
-    var wrap = document.createElement("div");
-    wrap.innerHTML = String(html || "");
-    (function walk(node) {
-      Array.from(node.childNodes).forEach(function (child) {
-        if (child.nodeType === 8) { child.remove(); return; }
-        if (child.nodeType !== 1) return;
-        var tag = child.tagName;
-        if (!ALLOWED_TAGS.has(tag)) {
-          var frag = document.createDocumentFragment();
-          while (child.firstChild) frag.appendChild(child.firstChild);
-          child.replaceWith(frag);
-          return;
+  /* ───────────────────────────────────────────
+     Sanitize HTML
+  ─────────────────────────────────────────── */
+  function sanitize(html) {
+    var wrap=document.createElement("div"); wrap.innerHTML=String(html||"");
+    (function walk(node){
+      Array.from(node.childNodes).forEach(function(ch){
+        if(ch.nodeType===8){ch.remove();return;}
+        if(ch.nodeType!==1) return;
+        var tag=ch.tagName;
+        if(!SAFE_TAGS.has(tag)){
+          var f=document.createDocumentFragment();
+          while(ch.firstChild) f.appendChild(ch.firstChild);
+          ch.replaceWith(f); return;
         }
-        Array.from(child.attributes).forEach(function (a) {
-          var n = a.name.toLowerCase();
-          if (n.startsWith("on") || n === "style" || n === "src" || n === "srcdoc")
-            child.removeAttribute(a.name);
+        Array.from(ch.attributes).forEach(function(a){
+          var n=a.name.toLowerCase();
+          if(n.startsWith("on")||n==="style"||n==="src"||n==="srcdoc") ch.removeAttribute(a.name);
         });
-        if (tag === "A") {
-          var href = child.getAttribute("href") || "";
-          if (!/^https?:\/\//i.test(href)) child.removeAttribute("href");
-          child.setAttribute("target", "_blank");
-          child.setAttribute("rel", "noopener noreferrer");
+        if(tag==="A"){
+          var h=ch.getAttribute("href")||"";
+          if(!/^https?:\/\//i.test(h)) ch.removeAttribute("href");
+          ch.setAttribute("target","_blank"); ch.setAttribute("rel","noopener noreferrer");
         }
-        walk(child);
+        walk(ch);
       });
     })(wrap);
     return wrap.innerHTML;
   }
 
-  /* ═══════════════════════════════════════════
-     Render
-     ═══════════════════════════════════════════ */
-  function renderAll() {
-    applyTheme();
-    renderTabs();
-    renderBoxes();
-    renderConnections();
-    updateEmpty();
-  }
+  /* ───────────────────────────────────────────
+     Render all
+  ─────────────────────────────────────────── */
+  function renderAll() { applyTheme(); renderTabs(); renderBoxes(); renderConns(); updateEmpty(); }
 
   function renderTabs() {
-    DOM.tabs.innerHTML = "";
-    state.spaces.forEach(function (sp) {
-      var b = document.createElement("button");
-      b.type = "button";
-      b.className = "space-tab" + (sp.id === state.activeSpaceId ? " is-active" : "");
-      b.textContent = sp.name;
-      b.addEventListener("click", function () {
-        state.activeSpaceId = sp.id;
-        persist(); renderAll();
-      });
-      DOM.tabs.appendChild(b);
+    D.tabs.innerHTML="";
+    state.spaces.forEach(function(sp){
+      var b=document.createElement("button");
+      b.type="button"; b.className="space-tab"+(sp.id===state.activeSpaceId?" is-active":"");
+      b.textContent=sp.name;
+      b.addEventListener("click",function(){ state.activeSpaceId=sp.id; save(); renderAll(); });
+      D.tabs.appendChild(b);
     });
   }
 
-  function updateEmpty() {
-    DOM.empty.hidden = activeSpace().boxes.length > 0;
-  }
+  function updateEmpty() { D.empty.hidden=activeSpace().boxes.length>0; }
 
+  /* ───────────────────────────────────────────
+     Box markup
+  ─────────────────────────────────────────── */
   function renderBoxes() {
-    var q_str = (DOM.search.value || "").trim().toLowerCase();
-    DOM.boxes.innerHTML = "";
-    var boxes = activeSpace().boxes.slice().sort(function (a, b) { return (a.z || 0) - (b.z || 0); });
-    boxes.forEach(function (box) {
-      var el = document.createElement("article");
-      el.className = "ps-box";
-      el.dataset.id = box.id;
-      el.style.cssText = "left:" + box.x + "px;top:" + box.y + "px;width:" + box.width + "px;height:" + box.height + "px;z-index:" + (box.z || 1);
-      if (q_str && matchesQuery(box, q_str)) el.classList.add("is-highlight");
-      el.innerHTML = boxMarkup(box);
-      DOM.boxes.appendChild(el);
-      wireBox(el, box);
+    var qStr=(D.search.value||"").trim().toLowerCase();
+    D.boxes.innerHTML="";
+    activeSpace().boxes.slice().sort(function(a,b){return(a.z||0)-(b.z||0);}).forEach(function(box){
+      var el=document.createElement("article");
+      el.className="ps-box"; el.dataset.id=box.id;
+      el.style.cssText="left:"+box.x+"px;top:"+box.y+"px;width:"+box.width+"px;height:"+box.height+"px;z-index:"+(box.z||1);
+      if(qStr&&matchQ(box,qStr)) el.classList.add("is-highlight");
+      el.innerHTML=boxHTML(box);
+      D.boxes.appendChild(el);
+      wireBox(el,box);
     });
   }
 
-  function matchesQuery(box, q_str) {
-    var blob = [
-      box.title, box.content, box.url,
-      (box.tasks || []).map(function (t) { return t.text; }).join(" "),
-      (box.chart && box.chart.description) || ""
-    ].join(" ").toLowerCase();
-    return blob.includes(q_str);
+  function matchQ(box,q) {
+    return [box.title,box.content,box.url,box.embedUrl,
+      (box.tasks||[]).map(function(t){return t.text;}).join(" "),
+      (box.chart&&box.chart.desc)||""
+    ].join(" ").toLowerCase().includes(q);
   }
 
-  /* ── Box markup ─────────────────────────── */
-  function boxMarkup(box) {
-    var id = box.id;
-    var actions =
-      '<div class="box-actions">' +
-        '<button type="button" class="icon-btn act-parent" aria-label="والد"><i class="fa-solid fa-sitemap"></i></button>' +
-        '<button type="button" class="icon-btn act-edit"   aria-label="ویرایش"><i class="fa-solid fa-pen"></i></button>' +
-        '<button type="button" class="icon-btn act-del"    aria-label="حذف"><i class="fa-solid fa-trash"></i></button>' +
+  function boxHTML(box) {
+    var acts=
+      '<div class="box-actions">'+
+        '<button class="icon-btn act-copy"   title="کپی"><i class="fa-solid fa-copy"></i></button>'+
+        '<button class="icon-btn act-parent" title="والد"><i class="fa-solid fa-sitemap"></i></button>'+
+        '<button class="icon-btn act-edit"   title="ویرایش"><i class="fa-solid fa-pen"></i></button>'+
+        '<button class="icon-btn act-del"    title="حذف"><i class="fa-solid fa-trash"></i></button>'+
       '</div>';
-    var head =
-      '<div class="box-head" data-drag="1">' +
-        '<span class="box-type">' + (BOX_TYPES[box.type] || box.type) + '</span>' +
-        '<input class="box-title" value="' + esc(box.title) + '" aria-label="عنوان" />' +
-        actions +
+    var head=
+      '<div class="box-head" data-drag="1">'+
+        '<span class="box-type">'+esc(TYPES[box.type]||box.type)+'</span>'+
+        '<input class="box-title" value="'+esc(box.title)+'" aria-label="عنوان" />'+
+        acts+
       '</div>';
+    var body="";
 
-    var body = "";
-    if (box.type === "text") {
-      body =
-        '<div class="rt-toolbar">' +
-          rtBtn("bold","B") + rtBtn("italic","I") + rtBtn("underline","U") + rtBtn("strikeThrough","S") +
-          rtBtn("h2","H2") + rtBtn("h3","H3") + rtBtn("ul","•") + rtBtn("ol","1.") +
-          rtBtn("quote","\u201c") + rtBtn("link",'<i class="fa-solid fa-link"></i>') +
-        '</div>' +
-        '<div class="rt-editor" contenteditable="true" data-placeholder="متن را بنویس…">' +
-          sanitizeHtml(box.content) +
-        '</div>';
-
-    } else if (box.type === "folder") {
-      var kids = activeSpace().boxes.filter(function (b) { return b.parentId === box.id; }).length;
-      body = '<p style="color:var(--text-muted);font-size:13px;margin:0">پوشه والد · فرزندان: ' + kids + '</p>';
-
-    } else if (box.type === "task") {
-      var done  = box.tasks.filter(function (t) { return t.done; }).length;
-      var total = box.tasks.length;
-      var pct   = total ? Math.round((done / total) * 100) : 0;
-      body =
-        '<div class="progress-wrap">' +
-          '<div class="progress-meta"><span>پیشرفت</span><span>' + done + "/" + total + '</span></div>' +
-          '<div class="progress-bar"><span style="width:' + pct + '%"></span></div>' +
-        '</div>' +
-        '<div class="task-list">' + box.tasks.map(taskRowMarkup).join("") + '</div>' +
-        '<button type="button" class="btn-ghost act-add-task" style="margin-top:8px">+ تسک جدید</button>';
-
-    } else if (box.type === "link") {
-      var safe = isSafeUrl(box.url) ? box.url : "";
-      body =
-        '<div class="link-card">' +
-          '<a class="link-url" href="' + esc(safe) + '" target="_blank" rel="noopener noreferrer">' +
-            esc(safe || "لینکی تنظیم نشده") +
-          '</a>' +
-          '<button type="button" class="btn-ghost act-edit-link">ویرایش لینک</button>' +
-        '</div>';
-
-    } else if (box.type === "chart") {
-      body =
-        '<div class="chart-desc">' + esc(box.chart.description || "") + '</div>' +
-        '<div class="chart-host"></div>' +
-        '<button type="button" class="btn-ghost act-edit-chart" style="margin-top:6px">ویرایش نمودار</button>';
+    if(box.type==="text") {
+      body=
+        '<div class="rt-toolbar">'+
+          rb("bold","B")+rb("italic","I")+rb("underline","U")+rb("strikeThrough","S")+
+          rb("h2","H2")+rb("h3","H3")+rb("ul","•")+rb("ol","1.")+
+          rb("quote","\u201c")+rb("link",'<i class="fa-solid fa-link"></i>')+
+        '</div>'+
+        '<div class="box-body"><div class="rt-editor" contenteditable="true" data-placeholder="متن…">'+sanitize(box.content)+'</div></div>';
+      return head+body+'<div class="resize-handle"></div>';
     }
 
-    return head + '<div class="box-body">' + body + '</div>' +
-           '<div class="resize-handle" aria-label="تغییر اندازه"></div>';
+    if(box.type==="folder") {
+      var kids=activeSpace().boxes.filter(function(b){return b.parentId===box.id;}).length;
+      body='<div class="box-body"><p style="color:var(--text-m);font-size:12px">پوشه والد · فرزندان: '+kids+'</p></div>';
+    }
+
+    else if(box.type==="task") {
+      var done=box.tasks.filter(function(t){return t.done;}).length;
+      var tot=box.tasks.length, pct=tot?Math.round(done/tot*100):0;
+      body='<div class="box-body">'+
+        '<div class="progress-wrap">'+
+          '<div class="progress-meta"><span>پیشرفت</span><span>'+done+'/'+tot+'</span></div>'+
+          '<div class="progress-bar"><span style="width:'+pct+'%"></span></div>'+
+        '</div>'+
+        '<div class="task-list">'+box.tasks.map(taskRow).join("")+'</div>'+
+        '<button class="btn-ghost btn-sm act-add-task" style="margin-top:8px">+ تسک جدید</button>'+
+      '</div>';
+    }
+
+    else if(box.type==="link") {
+      var su=safeUrl(box.url)?box.url:"";
+      body='<div class="box-body"><div class="link-card">'+
+        '<a class="link-url" href="'+esc(su)+'" target="_blank" rel="noopener noreferrer">'+esc(su||"لینکی ثبت نشده")+'</a>'+
+        '<button class="btn-ghost btn-sm act-edit-link">ویرایش لینک</button>'+
+      '</div></div>';
+    }
+
+    else if(box.type==="image") {
+      body='<div class="box-body" style="padding:0">'+
+        '<div class="img-box-wrap">'+
+          (box.imageData||box.url
+            ? '<img src="'+esc(box.imageData||box.url)+'" alt="'+esc(box.title)+'" />'
+            : '<div class="img-placeholder"><i class="fa-solid fa-image"></i><span>عکسی انتخاب نشده</span><button class="btn-ghost btn-sm act-edit-img">انتخاب عکس</button></div>'
+          )+
+        '</div>'+
+      '</div>';
+    }
+
+    else if(box.type==="embed") {
+      body='<div class="box-body" style="padding:0">'+
+        '<div class="iframe-wrap">'+
+          (safeUrl(box.embedUrl)
+            ? '<iframe src="'+esc(box.embedUrl)+'" sandbox="allow-scripts allow-same-origin allow-forms" loading="lazy" title="'+esc(box.title)+'"></iframe>'
+            : '<div class="iframe-placeholder"><i class="fa-solid fa-globe"></i><span>آدرسی وارد نشده</span><button class="btn-ghost btn-sm act-edit-embed">وارد کردن URL</button></div>'
+          )+
+        '</div>'+
+      '</div>';
+    }
+
+    else if(box.type==="timer") {
+      body='<div class="box-body"><div class="timer-wrap" data-timer-id="'+box.id+'">'+
+        '<div class="timer-modes">'+
+          ['clock','countdown','pomodoro'].map(function(m){
+            var labels={clock:"ساعت",countdown:"تایمر",pomodoro:"پومودورو"};
+            return '<button class="timer-mode-btn'+(box.timer.mode===m?" is-on":"")+'" data-m="'+m+'">'+labels[m]+'</button>';
+          }).join("")+
+        '</div>'+
+        '<div class="timer-clock">00:00:00</div>'+
+        '<div class="timer-label"></div>'+
+        '<div class="timer-progress"><div class="timer-progress-bar"><div class="timer-progress-fill" style="width:0%"></div></div></div>'+
+        '<div class="timer-btns">'+
+          '<button class="timer-play-btn">شروع</button>'+
+          '<button class="timer-reset-btn">ریست</button>'+
+        '</div>'+
+      '</div></div>';
+    }
+
+    else if(box.type==="chart") {
+      body='<div class="box-body">'+
+        '<div class="chart-desc">'+esc(box.chart.desc||"")+'</div>'+
+        '<div class="chart-host"></div>'+
+        '<button class="btn-ghost btn-sm act-edit-chart" style="margin-top:5px">ویرایش نمودار</button>'+
+      '</div>';
+    }
+
+    return head+'<div style="display:flex;flex-direction:column;flex:1;min-height:0">'+body+'</div><div class="resize-handle"></div>';
   }
 
-  function rtBtn(cmd, label) {
-    return '<button type="button" data-cmd="' + cmd + '" aria-label="' + cmd + '">' + label + '</button>';
+  function rb(cmd,lbl){
+    return '<button type="button" data-cmd="'+cmd+'" title="'+cmd+'">'+lbl+'</button>';
   }
-
-  function taskRowMarkup(t) {
-    return '<div class="task-row' + (t.done ? " is-done" : "") + '" data-tid="' + t.id + '">' +
-      '<input type="checkbox"' + (t.done ? " checked" : "") + ' />' +
-      '<input class="task-text" value="' + esc(t.text) + '" />' +
-      '<button type="button" class="icon-btn act-del-task" aria-label="حذف تسک"><i class="fa-solid fa-xmark"></i></button>' +
+  function taskRow(t){
+    return '<div class="task-row'+(t.done?" is-done":"")+'" data-tid="'+t.id+'">'+
+      '<input type="checkbox"'+(t.done?" checked":"")+'/>'+
+      '<input class="task-text" value="'+esc(t.text)+'"/>'+
+      '<button class="icon-btn act-del-task" title="حذف"><i class="fa-solid fa-xmark"></i></button>'+
     '</div>';
   }
 
-  /* ── Wire box events ────────────────────── */
-  function wireBox(el, box) {
+  /* ───────────────────────────────────────────
+     Wire box events
+  ─────────────────────────────────────────── */
+  function wireBox(el,box) {
     setupDrag(el.querySelector(".box-head"), box, el);
     setupResize(el.querySelector(".resize-handle"), box, el);
 
-    el.querySelector(".box-title").addEventListener("input", function (e) {
-      box.title = e.target.value; scheduleSave();
-    });
-    el.querySelector(".act-del").addEventListener("click", function () { confirmDeleteBox(box); });
-    el.querySelector(".act-parent").addEventListener("click", function () { openParentPicker(box); });
-    el.querySelector(".act-edit").addEventListener("click", function () { editBox(box); });
+    el.querySelector(".box-title").addEventListener("input",function(e){ box.title=e.target.value; lazySave(); });
+    el.querySelector(".act-del").addEventListener("click",function(){ confirmDel(box); });
+    el.querySelector(".act-parent").addEventListener("click",function(){ openParentPicker(box); });
+    el.querySelector(".act-edit").addEventListener("click",function(){ editBox(box); });
+    el.querySelector(".act-copy").addEventListener("click",function(){ copyBox(box); });
 
-    if (box.type === "text") {
-      var editor = el.querySelector(".rt-editor");
-      editor.addEventListener("input", function () {
-        box.content = sanitizeHtml(editor.innerHTML); scheduleSave();
-      });
-      el.querySelectorAll(".rt-toolbar button").forEach(function (btn) {
-        btn.addEventListener("mousedown", function (e) { e.preventDefault(); });
-        btn.addEventListener("click", function () { applyRich(editor, btn.dataset.cmd, box); });
+    if(box.type==="text") {
+      var ed=el.querySelector(".rt-editor");
+      ed.addEventListener("input",function(){ box.content=sanitize(ed.innerHTML); lazySave(); });
+      el.querySelectorAll(".rt-toolbar button").forEach(function(btn){
+        btn.addEventListener("mousedown",function(e){e.preventDefault();});
+        btn.addEventListener("click",function(){ applyRich(ed,btn.dataset.cmd,box); });
       });
     }
 
-    if (box.type === "task") {
-      el.querySelector(".act-add-task").addEventListener("click", function () {
-        box.tasks.push({ id: uid(), text: "تسک جدید", done: false });
-        persist(); renderBoxes(); renderConnections();
+    if(box.type==="task") {
+      var addBtn=el.querySelector(".act-add-task");
+      if(addBtn) addBtn.addEventListener("click",function(){
+        box.tasks.push({id:uid(),text:"تسک جدید",done:false});
+        save(); renderBoxes(); renderConns();
       });
-      el.querySelectorAll(".task-row").forEach(function (row) {
-        var tid = row.dataset.tid;
-        var cb  = row.querySelector("input[type=checkbox]");
-        var inp = row.querySelector(".task-text");
-        var del = row.querySelector(".act-del-task");
-        cb.addEventListener("change", function () {
-          var t = box.tasks.find(function (x) { return x.id === tid; });
-          if (t) t.done = cb.checked;
-          persist(); renderBoxes();
+      el.querySelectorAll(".task-row").forEach(function(row){
+        var tid=row.dataset.tid;
+        var cb=row.querySelector("input[type=checkbox]");
+        var inp=row.querySelector(".task-text");
+        var delBtn=row.querySelector(".act-del-task");
+        cb.addEventListener("change",function(){
+          var t=box.tasks.find(function(x){return x.id===tid;});
+          if(t) t.done=cb.checked; save(); renderBoxes();
         });
-        inp.addEventListener("input", function () {
-          var t = box.tasks.find(function (x) { return x.id === tid; });
-          if (t) t.text = inp.value;
-          scheduleSave();
+        inp.addEventListener("input",function(){
+          var t=box.tasks.find(function(x){return x.id===tid;});
+          if(t) t.text=inp.value; lazySave();
         });
-        del.addEventListener("click", function () {
-          box.tasks = box.tasks.filter(function (x) { return x.id !== tid; });
-          persist(); renderBoxes();
+        delBtn.addEventListener("click",function(){
+          box.tasks=box.tasks.filter(function(x){return x.id!==tid;});
+          save(); renderBoxes();
         });
       });
     }
 
-    if (box.type === "link") {
-      el.querySelector(".act-edit-link").addEventListener("click", function () { openLinkModal(box); });
+    if(box.type==="link") {
+      var elb=el.querySelector(".act-edit-link");
+      if(elb) elb.addEventListener("click",function(){ openLinkModal(box); });
     }
 
-    if (box.type === "chart") {
-      el.querySelector(".act-edit-chart").addEventListener("click", function () { openChartWizard(box); });
-      drawChart(el.querySelector(".chart-host"), box);
+    if(box.type==="image") {
+      var eib=el.querySelector(".act-edit-img");
+      if(eib) eib.addEventListener("click",function(){ openImageModal(box); });
+      // also clicking the image opens modal
+      var img=el.querySelector("img");
+      if(img) img.addEventListener("dblclick",function(){ openImageModal(box); });
+    }
+
+    if(box.type==="embed") {
+      var eeb=el.querySelector(".act-edit-embed");
+      if(eeb) eeb.addEventListener("click",function(){ openEmbedModal(box); });
+    }
+
+    if(box.type==="timer") {
+      initTimerBox(el,box);
+    }
+
+    if(box.type==="chart") {
+      var ecb=el.querySelector(".act-edit-chart");
+      if(ecb) ecb.addEventListener("click",function(){ openChartWizard(box); });
+      drawChart(el.querySelector(".chart-host"),box);
     }
   }
 
+  /* ───────────────────────────────────────────
+     Edit dispatch
+  ─────────────────────────────────────────── */
   function editBox(box) {
-    if (box.type === "link")  return openLinkModal(box);
-    if (box.type === "chart") return openChartWizard(box);
-    if (box.type === "text") {
-      var ed = DOM.boxes.querySelector('.rt-editor');
-      if (ed) ed.focus();
-      return;
+    if(box.type==="link")  return openLinkModal(box);
+    if(box.type==="image") return openImageModal(box);
+    if(box.type==="embed") return openEmbedModal(box);
+    if(box.type==="chart") return openChartWizard(box);
+    if(box.type==="text") {
+      var ed=D.boxes.querySelector('[data-id="'+box.id+'"] .rt-editor');
+      if(ed) ed.focus(); return;
     }
-    showToast("عنوان را از هدر باکس ویرایش کن");
+    if(box.type==="timer") return; // controlled inside box
+    toast("عنوان را از هدر باکس ویرایش کن");
   }
 
-  /* ── Rich text commands ─────────────────── */
-  function applyRich(editor, cmd, box) {
-    editor.focus();
-    if      (cmd === "h2")    document.execCommand("formatBlock", false, "H2");
-    else if (cmd === "h3")    document.execCommand("formatBlock", false, "H3");
-    else if (cmd === "ul")    document.execCommand("insertUnorderedList");
-    else if (cmd === "ol")    document.execCommand("insertOrderedList");
-    else if (cmd === "quote") document.execCommand("formatBlock", false, "BLOCKQUOTE");
-    else if (cmd === "link") {
+  /* ───────────────────────────────────────────
+     Copy box
+  ─────────────────────────────────────────── */
+  function copyBox(box) {
+    var sp=activeSpace();
+    var nb=JSON.parse(JSON.stringify(box));
+    nb.id=uid();
+    nb.x=box.x+box.width+20;
+    nb.y=box.y;
+    nb.z=nextZ();
+    nb.parentId=null; // no parent copy
+    sp.boxes.push(nb);
+    save(); renderAll();
+    toast("باکس کپی شد");
+  }
+
+  /* ───────────────────────────────────────────
+     Rich text
+  ─────────────────────────────────────────── */
+  function applyRich(ed,cmd,box) {
+    ed.focus();
+    if(cmd==="h2")    document.execCommand("formatBlock",false,"H2");
+    else if(cmd==="h3")    document.execCommand("formatBlock",false,"H3");
+    else if(cmd==="ul")    document.execCommand("insertUnorderedList");
+    else if(cmd==="ol")    document.execCommand("insertOrderedList");
+    else if(cmd==="quote") document.execCommand("formatBlock",false,"BLOCKQUOTE");
+    else if(cmd==="link") {
       openModal(
-        '<h3>لینک متن</h3>' +
-        '<label>آدرس</label><input id="m-url" placeholder="https://" />' +
-        '<div class="modal-actions">' +
-          '<button type="button" class="btn-ghost" id="m-cancel">انصراف</button>' +
-          '<button type="button" class="btn-primary" id="m-ok">درج</button>' +
-        '</div>'
+        '<h3>درج لینک</h3><label>آدرس</label><input id="mu" placeholder="https://" />'+
+        '<div class="modal-actions"><button class="btn-ghost" id="mc">انصراف</button><button class="btn-primary" id="mo">درج</button></div>'
       );
-      bind("m-cancel", closeModal);
-      bind("m-ok", function () {
-        var u = q("m-url").value.trim();
-        if (!isSafeUrl(u)) { showToast("فقط HTTP / HTTPS"); return; }
-        document.execCommand("createLink", false, u);
-        box.content = sanitizeHtml(editor.innerHTML);
-        persist(); closeModal();
+      mbind("mc",closeModal);
+      mbind("mo",function(){
+        var u=($i("mu")||{}).value||"";
+        if(!safeUrl(u)){toast("فقط https://");return;}
+        document.execCommand("createLink",false,u);
+        box.content=sanitize(ed.innerHTML); save(); closeModal();
       });
       return;
-    } else {
-      document.execCommand(cmd);
-    }
-    box.content = sanitizeHtml(editor.innerHTML);
-    scheduleSave();
+    } else document.execCommand(cmd);
+    box.content=sanitize(ed.innerHTML); lazySave();
   }
 
-  /* ═══════════════════════════════════════════
-     Drag & resize
-     ═══════════════════════════════════════════ */
-  function setupDrag(handle, box, el) {
-    if (!handle) return;
-    handle.addEventListener("pointerdown", function (e) {
-      if (e.target.closest("button,input,select,[contenteditable]")) return;
+  /* ───────────────────────────────────────────
+     Drag (pointer events — works on touch too)
+  ─────────────────────────────────────────── */
+  function setupDrag(handle,box,el) {
+    if(!handle) return;
+    handle.addEventListener("pointerdown",function(e){
+      if(e.target.closest("button,input,select,[contenteditable]")) return;
       e.preventDefault();
-      handle.setPointerCapture(e.pointerId);
-
-      box.z = nextZ();
-      el.style.zIndex = String(box.z);
-
-      var startX = e.clientX, startY = e.clientY;
-      var space = activeSpace();
-      var idSet = new Set([box.id].concat(Array.from(descendantsOf(box.id, space.boxes))));
-      var orig  = new Map();
-      space.boxes.forEach(function (b) { if (idSet.has(b.id)) orig.set(b.id, { x: b.x, y: b.y }); });
-
-      var raf = 0;
-      function onMove(ev) {
-        var dx = ev.clientX - startX, dy = ev.clientY - startY;
-        if (raf) cancelAnimationFrame(raf);
-        raf = requestAnimationFrame(function () {
-          space.boxes.forEach(function (b) {
-            if (!idSet.has(b.id)) return;
-            var o = orig.get(b.id);
-            b.x = Math.max(0, o.x + dx);
-            b.y = Math.max(0, o.y + dy);
-            var node = DOM.boxes.querySelector('[data-id="' + b.id + '"]');
-            if (node) { node.style.left = b.x + "px"; node.style.top = b.y + "px"; }
+      try{handle.setPointerCapture(e.pointerId);}catch(_){}
+      el.classList.add("is-dragging");
+      box.z=nextZ(); el.style.zIndex=String(box.z);
+      var sx=e.clientX, sy=e.clientY;
+      var sp=activeSpace();
+      var ids=new Set([box.id].concat(Array.from(descs(box.id,sp.boxes))));
+      var orig=new Map();
+      sp.boxes.forEach(function(b){ if(ids.has(b.id)) orig.set(b.id,{x:b.x,y:b.y}); });
+      var raf=0;
+      function onMove(ev){
+        var dx=ev.clientX-sx, dy=ev.clientY-sy;
+        if(raf) cancelAnimationFrame(raf);
+        raf=requestAnimationFrame(function(){
+          sp.boxes.forEach(function(b){
+            if(!ids.has(b.id)) return;
+            var o=orig.get(b.id);
+            b.x=Math.max(0,o.x+dx); b.y=Math.max(0,o.y+dy);
+            var node=D.boxes.querySelector('[data-id="'+b.id+'"]');
+            if(node){node.style.left=b.x+"px";node.style.top=b.y+"px";}
           });
-          renderConnections();
+          renderConns();
         });
       }
-      function onUp() {
-        handle.releasePointerCapture(e.pointerId);
-        handle.removeEventListener("pointermove", onMove);
-        handle.removeEventListener("pointerup", onUp);
-        persist();
+      function onUp(){
+        try{handle.releasePointerCapture(e.pointerId);}catch(_){}
+        handle.removeEventListener("pointermove",onMove);
+        handle.removeEventListener("pointerup",onUp);
+        el.classList.remove("is-dragging");
+        save();
       }
-      handle.addEventListener("pointermove", onMove);
-      handle.addEventListener("pointerup", onUp);
+      handle.addEventListener("pointermove",onMove);
+      handle.addEventListener("pointerup",onUp);
     });
   }
 
-  function setupResize(handle, box, el) {
-    if (!handle) return;
-    handle.addEventListener("pointerdown", function (e) {
+  /* ───────────────────────────────────────────
+     Resize
+  ─────────────────────────────────────────── */
+  function setupResize(handle,box,el) {
+    if(!handle) return;
+    handle.addEventListener("pointerdown",function(e){
       e.preventDefault(); e.stopPropagation();
-      handle.setPointerCapture(e.pointerId);
-      var sx = e.clientX, sy = e.clientY, sw = box.width, sh = box.height;
-      function onMove(ev) {
-        requestAnimationFrame(function () {
-          // Handle is at bottom-left (RTL): dragging left increases width
-          box.width  = Math.min(MAX_W, Math.max(MIN_W, sw - (ev.clientX - sx)));
-          box.height = Math.min(MAX_H, Math.max(MIN_H, sh + (ev.clientY - sy)));
-          el.style.width  = box.width  + "px";
-          el.style.height = box.height + "px";
-          if (box.type === "chart") drawChart(el.querySelector(".chart-host"), box);
-          renderConnections();
+      try{handle.setPointerCapture(e.pointerId);}catch(_){}
+      var sx=e.clientX, sy=e.clientY, sw=box.width, sh=box.height;
+      function onMove(ev){
+        requestAnimationFrame(function(){
+          // handle is bottom-left in RTL, so leftward drag = grow
+          box.width  = Math.min(MAX_W,Math.max(MIN_W, sw-(ev.clientX-sx)));
+          box.height = Math.min(MAX_H,Math.max(MIN_H, sh+(ev.clientY-sy)));
+          el.style.width=box.width+"px"; el.style.height=box.height+"px";
+          if(box.type==="chart") drawChart(el.querySelector(".chart-host"),box);
+          renderConns();
         });
       }
-      function onUp() {
-        handle.releasePointerCapture(e.pointerId);
-        handle.removeEventListener("pointermove", onMove);
-        handle.removeEventListener("pointerup", onUp);
-        persist();
+      function onUp(){
+        try{handle.releasePointerCapture(e.pointerId);}catch(_){}
+        handle.removeEventListener("pointermove",onMove);
+        handle.removeEventListener("pointerup",onUp);
+        save();
       }
-      handle.addEventListener("pointermove", onMove);
-      handle.addEventListener("pointerup", onUp);
+      handle.addEventListener("pointermove",onMove);
+      handle.addEventListener("pointerup",onUp);
     });
   }
 
-  /* ═══════════════════════════════════════════
-     Connections (SVG)
-     ═══════════════════════════════════════════ */
-  function renderConnections() {
-    var boxes = activeSpace().boxes;
-    var byId  = {};
-    boxes.forEach(function (b) { byId[b.id] = b; });
-    var parts = [];
-    boxes.forEach(function (b) {
-      if (!b.parentId || !byId[b.parentId]) return;
-      var p   = byId[b.parentId];
-      var x1  = p.x + p.width / 2,  y1 = p.y + p.height;
-      var x2  = b.x + b.width / 2,  y2 = b.y;
-      var mid = (y1 + y2) / 2;
-      parts.push(
-        '<path d="M ' + x1 + ' ' + y1 +
-        ' C ' + x1 + ' ' + mid + ',' + x2 + ' ' + mid + ',' + x2 + ' ' + y2 +
-        '" fill="none" stroke="#5a5a5a" stroke-width="1.5" stroke-dasharray="4 3"/>'
-      );
-    });
-    DOM.conn.innerHTML = parts.join("");
+  /* ───────────────────────────────────────────
+     Connections
+  ─────────────────────────────────────────── */
+  function renderConns() {
+    var boxes=activeSpace().boxes, byId={};
+    boxes.forEach(function(b){byId[b.id]=b;});
+    D.conn.innerHTML=boxes.filter(function(b){return b.parentId&&byId[b.parentId];}).map(function(b){
+      var p=byId[b.parentId];
+      var x1=p.x+p.width/2, y1=p.y+p.height;
+      var x2=b.x+b.width/2, y2=b.y;
+      var mid=(y1+y2)/2;
+      return '<path d="M'+x1+' '+y1+' C'+x1+' '+mid+','+x2+' '+mid+','+x2+' '+y2+
+             '" fill="none" stroke="#5a5a5a" stroke-width="1.5" stroke-dasharray="4 3"/>';
+    }).join("");
   }
 
-  /* ═══════════════════════════════════════════
+  /* ───────────────────────────────────────────
+     Timer box logic
+  ─────────────────────────────────────────── */
+  var timerState={};
+
+  function initTimerBox(el,box){
+    var id=box.id;
+    var wrap=el.querySelector(".timer-wrap");
+    if(!wrap) return;
+    var clockEl=wrap.querySelector(".timer-clock");
+    var labelEl=wrap.querySelector(".timer-label");
+    var fillEl=wrap.querySelector(".timer-progress-fill");
+    var playBtn=wrap.querySelector(".timer-play-btn");
+    var resetBtn=wrap.querySelector(".timer-reset-btn");
+    var modeBtns=wrap.querySelectorAll(".timer-mode-btn");
+
+    if(!timerState[id]) {
+      timerState[id]={ running:false, interval:null, elapsed:0, mode:box.timer.mode, totalSecs:box.timer.minutes*60 };
+    }
+    var ts=timerState[id];
+
+    function tick() {
+      var now=Date.now();
+      ts.elapsed=Math.floor((now-ts.startAt)/1000)+ts.baseElapsed;
+      render();
+    }
+
+    function render() {
+      var mode=ts.mode;
+      if(mode==="clock") {
+        var d=new Date();
+        clockEl.textContent=pad(d.getHours())+":"+pad(d.getMinutes())+":"+pad(d.getSeconds());
+        labelEl.textContent="ساعت";
+        fillEl.style.width="0%";
+        playBtn.style.display="none";
+        resetBtn.style.display="none";
+      } else if(mode==="countdown"||mode==="pomodoro") {
+        var total=ts.totalSecs;
+        var remaining=Math.max(0,total-ts.elapsed);
+        var h=Math.floor(remaining/3600), m=Math.floor((remaining%3600)/60), s=remaining%60;
+        clockEl.textContent=(h?pad(h)+":":"")+pad(m)+":"+pad(s);
+        labelEl.textContent=mode==="pomodoro"?"پومودورو":"تایمر";
+        fillEl.style.width=(total?Math.min(100,(ts.elapsed/total)*100):0)+"%";
+        playBtn.textContent=ts.running?"توقف":"شروع";
+        playBtn.classList.toggle("is-active",ts.running);
+        playBtn.style.display="";
+        resetBtn.style.display="";
+        if(remaining===0&&ts.running) { stopTimer(ts); toast("تایمر تموم شد! ⏰"); }
+      }
+    }
+
+    function startTimer() {
+      ts.running=true; ts.startAt=Date.now(); ts.baseElapsed=ts.elapsed;
+      ts.interval=setInterval(function(){
+        ts.elapsed=Math.floor((Date.now()-ts.startAt)/1000)+ts.baseElapsed;
+        render();
+      },1000);
+      render();
+    }
+    function stopTimer() { ts.running=false; clearInterval(ts.interval); render(); }
+    function resetTimer() {
+      stopTimer(ts); ts.elapsed=0;
+      ts.totalSecs=box.timer.minutes*60; render();
+    }
+
+    if(ts.mode==="clock") {
+      if(!ts.clockInterval) ts.clockInterval=setInterval(render,1000);
+    }
+    render();
+
+    playBtn.addEventListener("click",function(){
+      if(ts.mode==="clock") return;
+      ts.running?stopTimer():startTimer();
+    });
+    resetBtn.addEventListener("click",function(){ resetTimer(); });
+
+    modeBtns.forEach(function(btn){
+      btn.addEventListener("click",function(){
+        var m=btn.dataset.m;
+        stopTimer(); ts.mode=m; ts.elapsed=0;
+        if(m==="pomodoro") ts.totalSecs=25*60;
+        else if(m==="countdown") ts.totalSecs=box.timer.minutes*60;
+        box.timer.mode=m; save();
+        modeBtns.forEach(function(b){ b.classList.toggle("is-on",b.dataset.m===m); });
+        if(m==="clock"){ if(!ts.clockInterval) ts.clockInterval=setInterval(render,1000); }
+        else { clearInterval(ts.clockInterval); ts.clockInterval=null; }
+        render();
+      });
+    });
+  }
+
+  function pad(n){ return String(n).padStart(2,"0"); }
+
+  /* ───────────────────────────────────────────
      Charts
-     ═══════════════════════════════════════════ */
-  var _tip = null;
-
-  function showTip(e, text) {
-    if (!_tip) {
-      _tip = document.createElement("div");
-      _tip.className = "chart-tooltip";
-      document.body.appendChild(_tip);
-    }
-    _tip.style.display = "block";
-    _tip.textContent = text;
-    _tip.style.left = (e.clientX + 12) + "px";
-    _tip.style.top  = (e.clientY + 12) + "px";
+  ─────────────────────────────────────────── */
+  var tipEl=null;
+  function showTip(e,text){
+    if(!tipEl){tipEl=document.createElement("div");tipEl.className="chart-tooltip";document.body.appendChild(tipEl);}
+    tipEl.style.display="block"; tipEl.textContent=text;
+    tipEl.style.left=(e.clientX+12)+"px"; tipEl.style.top=(e.clientY+12)+"px";
   }
-  function hideTip() { if (_tip) _tip.style.display = "none"; }
-
-  function attachTip(el, text) {
-    el.addEventListener("pointerenter", function (e) { showTip(e, text); });
-    el.addEventListener("pointerleave", hideTip);
-    el.addEventListener("touchstart", function (e) {
-      e.preventDefault();
-      var t = e.touches[0];
-      showTip({ clientX: t.clientX, clientY: t.clientY }, text);
-    }, { passive: false });
-    el.addEventListener("touchend", hideTip);
+  function hideTip(){if(tipEl)tipEl.style.display="none";}
+  function wTip(el,text){
+    el.addEventListener("pointerenter",function(e){showTip(e,text);});
+    el.addEventListener("pointerleave",hideTip);
+    el.addEventListener("touchstart",function(e){
+      e.preventDefault(); var t=e.touches[0];
+      showTip({clientX:t.clientX,clientY:t.clientY},text);
+    },{passive:false});
+    el.addEventListener("touchend",hideTip);
   }
 
-  function drawChart(host, box) {
-    if (!host) return;
-    var labels = box.chart.labels.length ? box.chart.labels : ["—"];
-    var values = labels.map(function (_, i) { return Number(box.chart.values[i]) || 0; });
-    var kind   = box.chart.kind;
-    var w = Math.max(220, (box.width  || 320) - 28);
-    var h = Math.max(120, (box.height || 280) - 90);
-
-    var svgStr = kind === "bar"  ? barSvg(labels, values, w, h)
-               : kind === "line" ? lineSvg(labels, values, w, h)
-               :                   pieSvg(labels, values, w, h);
-
-    var legend = labels.map(function (lb, i) {
-      return '<span><i class="legend-dot" style="background:' + PASTELS[i % PASTELS.length] + '"></i>' + esc(lb) + '</span>';
+  function drawChart(host,box){
+    if(!host) return;
+    var ch=box.chart, labels=ch.labels.length?ch.labels:["—"];
+    var values=labels.map(function(_,i){return Number(ch.values[i])||0;});
+    var w=Math.max(200,(box.width||320)-28), h=Math.max(100,(box.height||280)-90);
+    var svg=(ch.kind==="bar")?barSvg(labels,values,w,h):(ch.kind==="line")?lineSvg(labels,values,w,h):pieSvg(labels,values,w,h);
+    var legend=labels.map(function(lb,i){
+      return '<span><i class="legend-dot" style="background:'+PASTELS[i%PASTELS.length]+'"></i>'+esc(lb)+'</span>';
     }).join("");
+    host.innerHTML=svg+'<div class="chart-legend">'+legend+'</div>';
+    host.querySelectorAll("[data-tip]").forEach(function(n){ wTip(n,n.getAttribute("data-tip")); });
+  }
 
-    host.innerHTML = svgStr + '<div class="chart-legend">' + legend + '</div>';
-    host.querySelectorAll("[data-tip]").forEach(function (n) {
-      attachTip(n, n.getAttribute("data-tip"));
+  function barSvg(labels,values,w,h){
+    var mx=Math.max(1,Math.max.apply(null,values)),pad=24,n=labels.length,gap=5;
+    var bw=Math.max(5,(w-pad*2-gap*(n-1))/n);
+    return '<svg class="chart-svg" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="xMidYMid meet">'+
+      values.map(function(v,i){
+        var bh=((h-pad*2)*v)/mx,x=pad+i*(bw+gap),y=h-pad-bh;
+        return '<rect data-tip="'+esc(labels[i]+": "+v)+'" x="'+x+'" y="'+y+'" width="'+bw+'" height="'+bh+'" rx="3" fill="'+PASTELS[i%PASTELS.length]+'"/>';
+      }).join("")+'</svg>';
+  }
+
+  function lineSvg(labels,values,w,h){
+    var mx=Math.max(1,Math.max.apply(null,values)),pad=24,n=Math.max(1,labels.length-1);
+    var pts=values.map(function(v,i){return{x:pad+(i*(w-pad*2))/n,y:h-pad-((h-pad*2)*v)/mx,l:labels[i],v:v};});
+    return '<svg class="chart-svg" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="xMidYMid meet">'+
+      '<path d="'+pts.map(function(p,i){return(i?"L":"M")+p.x+" "+p.y;}).join(" ")+'" fill="none" stroke="'+PASTELS[5]+'" stroke-width="2"/>'+
+      pts.map(function(p,i){return'<circle data-tip="'+esc(p.l+": "+p.v)+'" cx="'+p.x+'" cy="'+p.y+'" r="4" fill="'+PASTELS[i%PASTELS.length]+'" stroke="#111" stroke-width="1"/>';}).join("")+
+      '</svg>';
+  }
+
+  function pieSvg(labels,values,w,h){
+    var tot=values.reduce(function(a,b){return a+b;},0)||1;
+    var cx=w/2,cy=h/2,r=Math.min(w,h)/2-14,ir=r*.52,a0=-Math.PI/2,paths="";
+    values.forEach(function(v,i){
+      var a1=a0+(v/tot)*Math.PI*2;
+      var lg=a1-a0>Math.PI?1:0;
+      var p0=pol(cx,cy,r,a0),p1=pol(cx,cy,r,a1),ip0=pol(cx,cy,ir,a0),ip1=pol(cx,cy,ir,a1);
+      paths+='<path data-tip="'+esc(labels[i]+": "+v)+'" d="M'+p0[0]+' '+p0[1]+' A'+r+' '+r+' 0 '+lg+' 1 '+p1[0]+' '+p1[1]+' L'+ip1[0]+' '+ip1[1]+' A'+ir+' '+ir+' 0 '+lg+' 0 '+ip0[0]+' '+ip0[1]+' Z" fill="'+PASTELS[i%PASTELS.length]+'"/>';
+      a0=a1;
+    });
+    return '<svg class="chart-svg" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="xMidYMid meet">'+paths+'</svg>';
+  }
+  function pol(cx,cy,r,a){return[cx+r*Math.cos(a),cy+r*Math.sin(a)];}
+
+  /* ───────────────────────────────────────────
+     Box modals
+  ─────────────────────────────────────────── */
+  function confirmDel(box){
+    openModal(
+      '<h3>حذف باکس</h3><p>«'+esc(box.title)+'» حذف شود؟</p>'+
+      '<div class="modal-actions"><button class="btn-ghost" id="mc">انصراف</button><button class="btn-danger" id="mo">حذف</button></div>'
+    );
+    mbind("mc",closeModal);
+    mbind("mo",function(){
+      var sp=activeSpace();
+      sp.boxes.forEach(function(b){if(b.parentId===box.id)b.parentId=null;});
+      sp.boxes=sp.boxes.filter(function(b){return b.id!==box.id;});
+      delete timerState[box.id];
+      save(); closeModal(); renderAll(); toast("حذف شد");
     });
   }
 
-  function barSvg(labels, values, w, h) {
-    var max = Math.max(1, Math.max.apply(null, values));
-    var pad = 24, n = labels.length, gap = 6;
-    var bw  = Math.max(6, (w - pad * 2 - gap * (n - 1)) / n);
-    var rects = values.map(function (v, i) {
-      var bh = ((h - pad * 2) * v) / max;
-      var x  = pad + i * (bw + gap);
-      var y  = h - pad - bh;
-      return '<rect data-tip="' + esc(labels[i] + ": " + v) + '"' +
-             ' x="' + x + '" y="' + y + '" width="' + bw + '" height="' + bh + '"' +
-             ' rx="3" fill="' + PASTELS[i % PASTELS.length] + '"/>';
+  function openParentPicker(box){
+    var sp=activeSpace();
+    var blocked=new Set([box.id].concat(Array.from(descs(box.id,sp.boxes))));
+    var opts=sp.boxes.filter(function(b){return!blocked.has(b.id);}).map(function(b){
+      return '<option value="'+b.id+'"'+(box.parentId===b.id?" selected":"")+'>'+esc(b.title)+'</option>';
     }).join("");
-    return '<svg class="chart-svg" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="xMidYMid meet">' + rects + '</svg>';
-  }
-
-  function lineSvg(labels, values, w, h) {
-    var max = Math.max(1, Math.max.apply(null, values));
-    var pad = 24, n = Math.max(1, labels.length - 1);
-    var pts = values.map(function (v, i) {
-      return {
-        x: pad + (i * (w - pad * 2)) / n,
-        y: h - pad - ((h - pad * 2) * v) / max,
-        l: labels[i], v: v
-      };
-    });
-    var d    = pts.map(function (p, i) { return (i ? "L" : "M") + p.x + " " + p.y; }).join(" ");
-    var dots = pts.map(function (p, i) {
-      return '<circle data-tip="' + esc(p.l + ": " + p.v) + '"' +
-             ' cx="' + p.x + '" cy="' + p.y + '" r="4"' +
-             ' fill="' + PASTELS[i % PASTELS.length] + '" stroke="#111" stroke-width="1"/>';
-    }).join("");
-    return '<svg class="chart-svg" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="xMidYMid meet">' +
-           '<path d="' + d + '" fill="none" stroke="' + PASTELS[5] + '" stroke-width="2"/>' +
-           dots + '</svg>';
-  }
-
-  function pieSvg(labels, values, w, h) {
-    var total = values.reduce(function (a, b) { return a + b; }, 0) || 1;
-    var cx = w / 2, cy = h / 2;
-    var r  = Math.min(w, h) / 2 - 14;
-    var ir = r * 0.52;
-    var a0 = -Math.PI / 2, paths = "";
-    values.forEach(function (v, i) {
-      var a1   = a0 + (v / total) * Math.PI * 2;
-      paths   += donutSlice(cx, cy, r, ir, a0, a1, PASTELS[i % PASTELS.length], labels[i] + ": " + v);
-      a0 = a1;
-    });
-    return '<svg class="chart-svg" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="xMidYMid meet">' + paths + '</svg>';
-  }
-
-  function polar(cx, cy, r, a) { return [cx + r * Math.cos(a), cy + r * Math.sin(a)]; }
-
-  function donutSlice(cx, cy, r, ir, a0, a1, color, tip) {
-    var lg  = a1 - a0 > Math.PI ? 1 : 0;
-    var p0  = polar(cx, cy, r,  a0), p1  = polar(cx, cy, r,  a1);
-    var ip0 = polar(cx, cy, ir, a0), ip1 = polar(cx, cy, ir, a1);
-    var d   = "M " + p0[0]  + " " + p0[1]  + " A " + r  + " " + r  + " 0 " + lg + " 1 " + p1[0]  + " " + p1[1] +
-              " L " + ip1[0] + " " + ip1[1] + " A " + ir + " " + ir + " 0 " + lg + " 0 " + ip0[0] + " " + ip0[1] + " Z";
-    return '<path data-tip="' + esc(tip) + '" d="' + d + '" fill="' + color + '"/>';
-  }
-
-  /* ═══════════════════════════════════════════
-     Modals — boxes
-     ═══════════════════════════════════════════ */
-  function confirmDeleteBox(box) {
     openModal(
-      '<h3>حذف باکس</h3>' +
-      '<p>«' + esc(box.title) + '» حذف شود؟ فرزندان باقی می‌مانند.</p>' +
-      '<div class="modal-actions">' +
-        '<button type="button" class="btn-ghost"  id="m-cancel">انصراف</button>' +
-        '<button type="button" class="btn-danger" id="m-ok">حذف</button>' +
-      '</div>'
+      '<h3>انتخاب والد</h3><label>والد</label>'+
+      '<select id="mp"><option value="">بدون والد</option>'+opts+'</select>'+
+      '<div class="modal-actions"><button class="btn-ghost" id="mc">انصراف</button><button class="btn-primary" id="mo">ذخیره</button></div>'
     );
-    bind("m-cancel", closeModal);
-    bind("m-ok", function () {
-      var sp = activeSpace();
-      sp.boxes.forEach(function (b) { if (b.parentId === box.id) b.parentId = null; });
-      sp.boxes = sp.boxes.filter(function (b) { return b.id !== box.id; });
-      persist(); closeModal(); renderAll(); showToast("باکس حذف شد");
+    mbind("mc",closeModal);
+    mbind("mo",function(){
+      var pid=($i("mp")||{}).value||null;
+      if(wouldCycle(box.id,pid,sp.boxes)){toast("ساختار حلقه‌ای مجاز نیست");return;}
+      box.parentId=pid; save(); closeModal(); renderAll();
     });
   }
 
-  function openParentPicker(box) {
-    var sp      = activeSpace();
-    var blocked = new Set([box.id].concat(Array.from(descendantsOf(box.id, sp.boxes))));
-    var opts    = sp.boxes
-      .filter(function (b) { return !blocked.has(b.id); })
-      .map(function (b) {
-        return '<option value="' + b.id + '"' + (box.parentId === b.id ? " selected" : "") + '>' + esc(b.title) + '</option>';
-      }).join("");
+  function openLinkModal(box){
     openModal(
-      '<h3>انتخاب والد</h3>' +
-      '<label>باکس والد</label>' +
-      '<select id="m-parent"><option value="">بدون والد</option>' + opts + '</select>' +
-      '<div class="modal-actions">' +
-        '<button type="button" class="btn-ghost"   id="m-cancel">انصراف</button>' +
-        '<button type="button" class="btn-primary" id="m-ok">ذخیره</button>' +
-      '</div>'
+      '<h3>لینک</h3><label>عنوان</label><input id="mt" value="'+esc(box.title)+'"/>'+
+      '<label>آدرس</label><input id="mu" value="'+esc(box.url)+'" placeholder="https://"/>'+
+      '<div class="modal-actions"><button class="btn-ghost" id="mc">انصراف</button><button class="btn-primary" id="mo">ذخیره</button></div>'
     );
-    bind("m-cancel", closeModal);
-    bind("m-ok", function () {
-      var pid = q("m-parent").value || null;
-      if (wouldCycle(box.id, pid, sp.boxes)) { showToast("ساختار حلقه‌ای مجاز نیست"); return; }
-      box.parentId = pid;
-      persist(); closeModal(); renderAll();
+    mbind("mc",closeModal);
+    mbind("mo",function(){
+      var url=($i("mu")||{}).value||"";
+      if(!safeUrl(url)){toast("فقط https://");return;}
+      box.title=($i("mt")||{}).value||"لینک"; box.url=url;
+      save(); closeModal(); renderBoxes();
     });
   }
 
-  function openLinkModal(box) {
+  function openImageModal(box){
     openModal(
-      '<h3>لینک</h3>' +
-      '<label>عنوان</label><input id="m-title" value="' + esc(box.title) + '" />' +
-      '<label>آدرس</label><input id="m-url" value="' + esc(box.url) + '" placeholder="https://" />' +
-      '<div class="modal-actions">' +
-        '<button type="button" class="btn-ghost"   id="m-cancel">انصراف</button>' +
-        '<button type="button" class="btn-primary" id="m-ok">ذخیره</button>' +
-      '</div>'
+      '<h3>عکس</h3>'+
+      '<label>آپلود از دستگاه</label>'+
+      '<input type="file" id="imgpick" accept="image/*" style="font-size:12px"/>'+
+      '<label>یا URL عکس</label>'+
+      '<input id="mu" value="'+esc(box.url)+'" placeholder="https://...jpg"/>'+
+      '<div class="modal-actions"><button class="btn-ghost" id="mc">انصراف</button><button class="btn-primary" id="mo">ذخیره</button></div>'
     );
-    bind("m-cancel", closeModal);
-    bind("m-ok", function () {
-      var url = q("m-url").value.trim();
-      if (!isSafeUrl(url)) { showToast("فقط HTTP یا HTTPS"); return; }
-      box.title = q("m-title").value.trim() || "لینک";
-      box.url   = url;
-      persist(); closeModal(); renderBoxes();
+    mbind("mc",closeModal);
+    var pickEl=$i("imgpick");
+    if(pickEl) pickEl.addEventListener("change",function(){
+      var f=pickEl.files&&pickEl.files[0]; if(!f) return;
+      if(f.size>4*1024*1024){toast("عکس بیش از ۴ مگابایت است");return;}
+      var r=new FileReader();
+      r.onload=function(){ box.imageData=r.result; box.url=""; save(); closeModal(); renderBoxes(); };
+      r.readAsDataURL(f);
+    });
+    mbind("mo",function(){
+      var url=($i("mu")||{}).value||"";
+      if(url){ box.url=url; box.imageData=""; save(); closeModal(); renderBoxes(); }
+      else toast("آدرس یا فایل انتخاب کن");
     });
   }
 
-  /* ── Chart wizard (4 steps) ─────────────── */
-  function openChartWizard(existing) {
-    var draft = existing
-      ? JSON.parse(JSON.stringify(existing.chart))
-      : { kind:"bar", description:"", labels:["الف","ب"], values:[10,6] };
-    var title = existing ? existing.title : "نمودار";
+  function openEmbedModal(box){
+    openModal(
+      '<h3>امبد سایت</h3><label>آدرس URL</label>'+
+      '<input id="mu" value="'+esc(box.embedUrl)+'" placeholder="https://example.com"/>'+
+      '<p style="font-size:11px;color:var(--text-m);margin-top:6px">توجه: بعضی سایت‌ها اجازه امبد نمیدن (X-Frame-Options)</p>'+
+      '<div class="modal-actions"><button class="btn-ghost" id="mc">انصراف</button><button class="btn-primary" id="mo">ذخیره</button></div>'
+    );
+    mbind("mc",closeModal);
+    mbind("mo",function(){
+      var url=($i("mu")||{}).value||"";
+      if(!safeUrl(url)){toast("فقط https://");return;}
+      box.embedUrl=url; save(); closeModal(); renderBoxes();
+    });
+  }
 
-    function step1() {
+  /* ───────────────────────────────────────────
+     Chart wizard
+  ─────────────────────────────────────────── */
+  function openChartWizard(existing){
+    var draft=existing?JSON.parse(JSON.stringify(existing.chart)):{kind:"bar",desc:"",labels:["الف","ب"],values:[10,6]};
+    var title=existing?existing.title:"نمودار";
+    function s1(){
       openModal(
-        '<h3>نمودار — ۱ / ۴</h3>' +
-        '<label>عنوان</label><input id="c-title" value="' + esc(title) + '" />' +
-        '<label>توضیح</label><textarea id="c-desc">' + esc(draft.description) + '</textarea>' +
-        '<div class="modal-actions">' +
-          '<button type="button" class="btn-ghost"   id="m-cancel">انصراف</button>' +
-          '<button type="button" class="btn-primary" id="m-next">بعدی</button>' +
-        '</div>'
+        '<h3>نمودار ۱/۴</h3><label>عنوان</label><input id="ct" value="'+esc(title)+'"/>'+
+        '<label>توضیح</label><textarea id="cd">'+esc(draft.desc)+'</textarea>'+
+        '<div class="modal-actions"><button class="btn-ghost" id="mc">انصراف</button><button class="btn-primary" id="mn">بعدی</button></div>'
       );
-      bind("m-cancel", closeModal);
-      bind("m-next", function () {
-        title = q("c-title").value.trim() || "نمودار";
-        draft.description = q("c-desc").value;
-        step2();
-      });
+      mbind("mc",closeModal);
+      mbind("mn",function(){title=($i("ct")||{}).value||"نمودار";draft.desc=($i("cd")||{}).value;s2();});
     }
-
-    function step2() {
+    function s2(){
       openModal(
-        '<h3>نمودار — ۲ / ۴</h3>' +
-        '<div class="kind-grid">' +
-          ['bar','line','pie'].map(function (k) {
-            var labels = { bar:"میله‌ای", line:"خطی", pie:"دایره‌ای" };
-            return '<button type="button" class="kind-card' + (draft.kind === k ? " is-on" : "") + '" data-k="' + k + '">' + labels[k] + '</button>';
-          }).join("") +
-        '</div>' +
-        '<div class="modal-actions">' +
-          '<button type="button" class="btn-ghost"   id="m-back">قبلی</button>' +
-          '<button type="button" class="btn-primary" id="m-next">بعدی</button>' +
-        '</div>'
+        '<h3>نمودار ۲/۴</h3><div class="kind-grid cols-2">'+
+        ['bar','line','pie'].map(function(k){
+          var lbs={bar:"میله‌ای",line:"خطی",pie:"دایره‌ای"};
+          return '<button class="kind-card'+(draft.kind===k?" is-on":"")+'" data-k="'+k+'">'+lbs[k]+'</button>';
+        }).join("")+
+        '</div><div class="modal-actions"><button class="btn-ghost" id="mb">قبلی</button><button class="btn-primary" id="mn">بعدی</button></div>'
       );
-      DOM.modal.querySelectorAll(".kind-card").forEach(function (c) {
-        c.addEventListener("click", function () { draft.kind = c.dataset.k; step2(); });
-      });
-      bind("m-back", step1);
-      bind("m-next", step3);
+      D.modal.querySelectorAll(".kind-card").forEach(function(c){c.addEventListener("click",function(){draft.kind=c.dataset.k;s2();});});
+      mbind("mb",s1); mbind("mn",s3);
     }
-
-    function step3() {
-      var rows = draft.labels.map(function (lb, i) {
-        return '<div class="data-row">' +
-          '<input class="c-lb"  value="' + esc(lb) + '" />' +
-          '<input class="c-val" type="number" value="' + (draft.values[i] || 0) + '" />' +
-          '<button type="button" class="icon-btn c-del" aria-label="حذف"><i class="fa-solid fa-xmark"></i></button>' +
-        '</div>';
-      }).join("");
+    function s3(){
       openModal(
-        '<h3>نمودار — ۳ / ۴</h3>' +
-        '<div id="c-rows">' + rows + '</div>' +
-        '<button type="button" class="btn-ghost" id="c-add" style="margin-top:6px">+ ردیف</button>' +
-        '<div class="modal-actions">' +
-          '<button type="button" class="btn-ghost"   id="m-back">قبلی</button>' +
-          '<button type="button" class="btn-primary" id="m-next">پیش‌نمایش</button>' +
-        '</div>'
+        '<h3>نمودار ۳/۴</h3><div id="rows">'+
+        draft.labels.map(function(lb,i){
+          return '<div class="data-row"><input class="c-lb" value="'+esc(lb)+'"/><input class="c-val" type="number" value="'+(draft.values[i]||0)+'"/><button class="icon-btn c-del"><i class="fa-solid fa-xmark"></i></button></div>';
+        }).join("")+
+        '</div><button class="btn-ghost btn-sm" id="ca" style="margin:6px 0">+ ردیف</button>'+
+        '<div class="modal-actions"><button class="btn-ghost" id="mb">قبلی</button><button class="btn-primary" id="mn">پیش‌نمایش</button></div>'
       );
-      function collect() {
-        draft.labels = Array.from(DOM.modal.querySelectorAll(".c-lb")).map(function (i) { return i.value; });
-        draft.values = Array.from(DOM.modal.querySelectorAll(".c-val")).map(function (i) { return Number(i.value) || 0; });
+      function collect(){
+        draft.labels=Array.from(D.modal.querySelectorAll(".c-lb")).map(function(i){return i.value;});
+        draft.values=Array.from(D.modal.querySelectorAll(".c-val")).map(function(i){return Number(i.value)||0;});
       }
-      q("c-add").addEventListener("click", function () { collect(); draft.labels.push("مورد"); draft.values.push(1); step3(); });
-      DOM.modal.querySelectorAll(".c-del").forEach(function (btn, i) {
-        btn.addEventListener("click", function () { collect(); draft.labels.splice(i,1); draft.values.splice(i,1); step3(); });
+      $i("ca").addEventListener("click",function(){collect();draft.labels.push("مورد");draft.values.push(1);s3();});
+      D.modal.querySelectorAll(".c-del").forEach(function(btn,i){
+        btn.addEventListener("click",function(){collect();draft.labels.splice(i,1);draft.values.splice(i,1);s3();});
       });
-      bind("m-back", step2);
-      bind("m-next", function () { collect(); step4(); });
+      mbind("mb",s2); mbind("mn",function(){collect();s4();});
     }
-
-    function step4() {
+    function s4(){
       openModal(
-        '<h3>پیش‌نمایش</h3>' +
-        '<p style="color:var(--text-muted);font-size:12px">' + esc(title) + (draft.description ? ' — ' + esc(draft.description) : '') + '</p>' +
-        '<div id="c-prev"></div>' +
-        '<div class="modal-actions">' +
-          '<button type="button" class="btn-ghost"   id="m-back">قبلی</button>' +
-          '<button type="button" class="btn-primary" id="m-ok">ذخیره</button>' +
-        '</div>'
+        '<h3>پیش‌نمایش</h3><p style="font-size:11px;color:var(--text-m)">'+esc(title)+'</p><div id="cprev"></div>'+
+        '<div class="modal-actions"><button class="btn-ghost" id="mb">قبلی</button><button class="btn-primary" id="mo">ذخیره</button></div>'
       );
-      drawChart(q("c-prev"), { width:420, height:280, chart:draft });
-      bind("m-back", step3);
-      bind("m-ok", function () {
-        if (existing) {
-          existing.title = title;
-          existing.chart = draft;
-        } else {
-          var b = defaultBox("chart", 120 + Math.random() * 80, 120 + Math.random() * 80);
-          b.title = title; b.chart = draft;
-          activeSpace().boxes.push(b);
+      drawChart($i("cprev"),{width:420,height:260,chart:draft});
+      mbind("mb",s3);
+      mbind("mo",function(){
+        if(existing){existing.title=title;existing.chart=draft;}
+        else{
+          var b=mkBox("chart",viewCenter().x,viewCenter().y);
+          b.title=title; b.chart=draft; activeSpace().boxes.push(b);
         }
-        persist(); closeModal(); renderAll(); showToast("نمودار ذخیره شد");
+        save(); closeModal(); renderAll(); toast("نمودار ذخیره شد");
       });
     }
-
-    step1();
+    s1();
   }
 
-  /* ═══════════════════════════════════════════
-     Modals — spaces & boxes
-     ═══════════════════════════════════════════ */
-  function openAddBox() {
+  /* ───────────────────────────────────────────
+     Space modals
+  ─────────────────────────────────────────── */
+  function openAddBox(){
     openModal(
-      '<h3>باکس جدید</h3>' +
-      '<div class="kind-grid">' +
-        '<button type="button" class="kind-card" data-t="text"><i class="fa-solid fa-align-right"></i><br>متن</button>' +
-        '<button type="button" class="kind-card" data-t="folder"><i class="fa-solid fa-folder"></i><br>پوشه</button>' +
-        '<button type="button" class="kind-card" data-t="task"><i class="fa-solid fa-check"></i><br>تسک</button>' +
-        '<button type="button" class="kind-card" data-t="link"><i class="fa-solid fa-link"></i><br>لینک</button>' +
-        '<button type="button" class="kind-card" data-t="chart"><i class="fa-solid fa-chart-pie"></i><br>نمودار</button>' +
-      '</div>' +
-      '<div class="modal-actions"><button type="button" class="btn-ghost" id="m-cancel">بستن</button></div>'
+      '<h3>باکس جدید</h3><div class="kind-grid">'+
+      Object.keys(TYPES).map(function(t){
+        var icons={text:"fa-align-right",folder:"fa-folder",task:"fa-check",link:"fa-link",image:"fa-image",embed:"fa-globe",timer:"fa-clock",chart:"fa-chart-pie"};
+        return '<button class="kind-card" data-t="'+t+'"><i class="fa-solid '+icons[t]+'"></i>'+TYPES[t]+'</button>';
+      }).join("")+
+      '</div><div class="modal-actions"><button class="btn-ghost" id="mc">بستن</button></div>'
     );
-    bind("m-cancel", closeModal);
-    DOM.modal.querySelectorAll(".kind-card").forEach(function (c) {
-      c.addEventListener("click", function () {
-        var t = c.dataset.t;
-        closeModal();
-        if (t === "chart") return openChartWizard(null);
-        var center = viewCenter();
-        var b = defaultBox(t, center.x, center.y);
-        if (t === "link") {
-          activeSpace().boxes.push(b); persist(); renderAll(); openLinkModal(b); return;
-        }
-        if (t === "task") b.tasks = [{ id: uid(), text: "اولین تسک", done: false }];
-        activeSpace().boxes.push(b); persist(); renderAll();
+    mbind("mc",closeModal);
+    D.modal.querySelectorAll(".kind-card").forEach(function(c){
+      c.addEventListener("click",function(){
+        var t=c.dataset.t; closeModal();
+        if(t==="chart") return openChartWizard(null);
+        var ctr=viewCenter();
+        var b=mkBox(t,ctr.x,ctr.y);
+        if(t==="task") b.tasks=[{id:uid(),text:"اولین تسک",done:false}];
+        if(t==="link") { activeSpace().boxes.push(b); save(); renderAll(); openLinkModal(b); return; }
+        if(t==="image") { activeSpace().boxes.push(b); save(); renderAll(); openImageModal(b); return; }
+        if(t==="embed") { activeSpace().boxes.push(b); save(); renderAll(); openEmbedModal(b); return; }
+        activeSpace().boxes.push(b); save(); renderAll();
       });
     });
   }
 
-  function viewCenter() {
-    return {
-      x: DOM.scroll.scrollLeft + DOM.scroll.clientWidth  / 2 - 160,
-      y: DOM.scroll.scrollTop  + DOM.scroll.clientHeight / 2 - 110
-    };
+  function viewCenter(){
+    return{x:D.scroll.scrollLeft+D.scroll.clientWidth/2-160, y:D.scroll.scrollTop+D.scroll.clientHeight/2-110};
   }
 
-  function openNewSpace() {
+  function openNewSpace(){
     openModal(
-      '<h3>اسپیس جدید</h3>' +
-      '<label>نام</label><input id="m-name" value="اسپیس جدید" />' +
-      '<div class="modal-actions">' +
-        '<button type="button" class="btn-ghost"   id="m-cancel">انصراف</button>' +
-        '<button type="button" class="btn-primary" id="m-ok">ساخت</button>' +
-      '</div>'
+      '<h3>اسپیس جدید</h3><label>نام</label><input id="mn" value="اسپیس جدید"/>'+
+      '<div class="modal-actions"><button class="btn-ghost" id="mc">انصراف</button><button class="btn-primary" id="mo">ساخت</button></div>'
     );
-    bind("m-cancel", closeModal);
-    bind("m-ok", function () {
-      var name = q("m-name").value.trim() || "اسپیس جدید";
-      var id   = uid();
-      state.spaces.push({ id: id, name: name, boxes: [] });
-      state.activeSpaceId = id;
-      persist(); closeModal(); renderAll();
+    mbind("mc",closeModal);
+    mbind("mo",function(){
+      var name=($i("mn")||{}).value||"اسپیس جدید"; var id=uid();
+      state.spaces.push({id:id,name:name,boxes:[]});
+      state.activeSpaceId=id; save(); closeModal(); renderAll();
     });
   }
 
-  function openRenameSpace() {
-    var sp = activeSpace();
+  function openRenameSpace(){
+    var sp=activeSpace();
     openModal(
-      '<h3>تغییر نام</h3>' +
-      '<label>نام</label><input id="m-name" value="' + esc(sp.name) + '" />' +
-      '<div class="modal-actions">' +
-        '<button type="button" class="btn-ghost"   id="m-cancel">انصراف</button>' +
-        '<button type="button" class="btn-primary" id="m-ok">ذخیره</button>' +
-      '</div>'
+      '<h3>تغییر نام</h3><label>نام</label><input id="mn" value="'+esc(sp.name)+'"/>'+
+      '<div class="modal-actions"><button class="btn-ghost" id="mc">انصراف</button><button class="btn-primary" id="mo">ذخیره</button></div>'
     );
-    bind("m-cancel", closeModal);
-    bind("m-ok", function () {
-      sp.name = q("m-name").value.trim() || sp.name;
-      persist(); closeModal(); renderTabs();
+    mbind("mc",closeModal);
+    mbind("mo",function(){sp.name=($i("mn")||{}).value||sp.name;save();closeModal();renderTabs();});
+  }
+
+  function openDeleteSpace(){
+    if(state.spaces.length<2){toast("حداقل یک اسپیس باید بماند");return;}
+    var sp=activeSpace();
+    openModal(
+      '<h3>حذف اسپیس</h3><p>نام «'+esc(sp.name)+'» را وارد کن:</p>'+
+      '<input id="mn"/><div class="modal-actions">'+
+      '<button class="btn-ghost" id="mc">انصراف</button><button class="btn-danger" id="mo">حذف</button></div>',
+      {lock:true}
+    );
+    mbind("mc",closeModal);
+    mbind("mo",function(){
+      if(($i("mn")||{}).value!==sp.name){toast("نام مطابقت ندارد");return;}
+      state.spaces=state.spaces.filter(function(s){return s.id!==sp.id;});
+      state.activeSpaceId=state.spaces[0].id;
+      save(); closeModal(); renderAll(); toast("اسپیس حذف شد");
     });
   }
 
-  function openDeleteSpace() {
-    if (state.spaces.length < 2) { showToast("حداقل یک اسپیس باید بماند"); return; }
-    var sp = activeSpace();
+  function openSpaceMenu(){
     openModal(
-      '<h3>حذف اسپیس</h3>' +
-      '<p>برای تأیید، نام «' + esc(sp.name) + '» را وارد کن.</p>' +
-      '<input id="m-name" />' +
-      '<div class="modal-actions">' +
-        '<button type="button" class="btn-ghost"  id="m-cancel">انصراف</button>' +
-        '<button type="button" class="btn-danger" id="m-ok">حذف</button>' +
-      '</div>',
-      { lock: true }
+      '<h3>'+esc(activeSpace().name)+'</h3><div class="kind-grid cols-2">'+
+      '<button class="kind-card" id="smr">تغییر نام</button><button class="kind-card" id="smd">حذف</button></div>'+
+      '<div class="modal-actions"><button class="btn-ghost" id="mc">بستن</button></div>'
     );
-    bind("m-cancel", closeModal);
-    bind("m-ok", function () {
-      if (q("m-name").value.trim() !== sp.name) { showToast("نام مطابقت ندارد"); return; }
-      state.spaces = state.spaces.filter(function (s) { return s.id !== sp.id; });
-      state.activeSpaceId = state.spaces[0].id;
-      persist(); closeModal(); renderAll(); showToast("اسپیس حذف شد");
-    });
+    mbind("mc",closeModal);
+    mbind("smr",function(){closeModal();openRenameSpace();});
+    mbind("smd",function(){closeModal();openDeleteSpace();});
   }
 
-  function openSpaceMenu() {
-    openModal(
-      '<h3>' + esc(activeSpace().name) + '</h3>' +
-      '<div class="kind-grid">' +
-        '<button type="button" class="kind-card" id="sm-ren">تغییر نام</button>' +
-        '<button type="button" class="kind-card" id="sm-del">حذف اسپیس</button>' +
-      '</div>' +
-      '<div class="modal-actions"><button type="button" class="btn-ghost" id="m-cancel">بستن</button></div>'
-    );
-    bind("m-cancel", closeModal);
-    bind("sm-ren", function () { closeModal(); openRenameSpace(); });
-    bind("sm-del", function () { closeModal(); openDeleteSpace(); });
-  }
-
-  /* ═══════════════════════════════════════════
+  /* ───────────────────────────────────────────
      Export / Import
-     ═══════════════════════════════════════════ */
-  function doExport() {
-    var blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
-    var a    = document.createElement("a");
-    a.href   = URL.createObjectURL(blob);
-    a.download = "plan-space.json";
-    a.click();
-    URL.revokeObjectURL(a.href);
-    showToast("خروجی گرفته شد");
+  ─────────────────────────────────────────── */
+  function doExport(){
+    var blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
+    var a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="plan-space.json";
+    a.click(); URL.revokeObjectURL(a.href); toast("خروجی گرفته شد");
   }
 
-  var _pendingImport = null;
-
-  function onImportFile(e) {
-    var file = e.target.files && e.target.files[0];
-    e.target.value = "";
-    if (!file) return;
-    var reader = new FileReader();
-    reader.onerror = function () { showToast("خواندن فایل ناموفق بود"); };
-    reader.onload  = function () {
-      try {
-        var norm = normalizeState(JSON.parse(String(reader.result)));
-        if (!norm.spaces.length) throw new Error();
-        _pendingImport = norm;
+  function onImportFile(e){
+    var f=e.target.files&&e.target.files[0]; e.target.value=""; if(!f) return;
+    var r=new FileReader();
+    r.onerror=function(){toast("خواندن فایل ناموفق");};
+    r.onload=function(){
+      try{
+        var norm=normState(JSON.parse(String(r.result)));
+        if(!norm.spaces.length) throw 0;
+        pendingImport=norm;
         openModal(
-          '<h3>ورود داده</h3><p>فایل معتبر است. چطور اعمال شود؟</p>' +
-          '<div class="modal-actions">' +
-            '<button type="button" class="btn-ghost"   id="m-cancel">انصراف</button>' +
-            '<button type="button" class="btn-ghost"   id="m-add">افزودن</button>' +
-            '<button type="button" class="btn-primary" id="m-rep">جایگزینی</button>' +
-          '</div>',
-          { lock: true }
+          '<h3>ورود داده</h3><p>فایل معتبر است.</p>'+
+          '<div class="modal-actions">'+
+          '<button class="btn-ghost" id="mc">انصراف</button>'+
+          '<button class="btn-ghost" id="madd">افزودن</button>'+
+          '<button class="btn-primary" id="mrep">جایگزینی</button></div>',
+          {lock:true}
         );
-        bind("m-cancel", function () { _pendingImport = null; closeModal(); });
-        bind("m-rep", function () {
-          state = _pendingImport; _pendingImport = null;
-          persist(); closeModal(); renderAll(); showToast("جایگزین شد");
-        });
-        bind("m-add", function () {
-          var inc = _pendingImport; _pendingImport = null;
-          inc.spaces.forEach(function (sp) {
-            var idMap = {}, sid = uid();
-            var boxes = sp.boxes.map(function (b) {
-              var nid = uid(); idMap[b.id] = nid;
-              return Object.assign({}, b, { id: nid });
-            });
-            boxes.forEach(function (b) {
-              b.parentId = (b.parentId && idMap[b.parentId]) ? idMap[b.parentId] : null;
-            });
-            state.spaces.push({ id: sid, name: sp.name, boxes: boxes });
+        mbind("mc",function(){pendingImport=null;closeModal();});
+        mbind("mrep",function(){state=pendingImport;pendingImport=null;save();closeModal();renderAll();toast("جایگزین شد");});
+        mbind("madd",function(){
+          var inc=pendingImport;pendingImport=null;
+          inc.spaces.forEach(function(sp){
+            var idMap={},sid=uid();
+            var boxes=sp.boxes.map(function(b){var nid=uid();idMap[b.id]=nid;return Object.assign({},b,{id:nid});});
+            boxes.forEach(function(b){b.parentId=(b.parentId&&idMap[b.parentId])?idMap[b.parentId]:null;});
+            state.spaces.push({id:sid,name:sp.name,boxes:boxes});
           });
-          persist(); closeModal(); renderAll(); showToast("افزوده شد");
+          save();closeModal();renderAll();toast("افزوده شد");
         });
-      } catch (_) {
-        openModal(
-          '<h3>خطای ورود</h3><p>فایل JSON نامعتبر است.</p>' +
-          '<div class="modal-actions"><button type="button" class="btn-primary" id="m-ok">باشه</button></div>'
-        );
-        bind("m-ok", closeModal);
+      }catch(_){
+        openModal('<h3>خطا</h3><p>فایل JSON نامعتبر است.</p><div class="modal-actions"><button class="btn-primary" id="mo">باشه</button></div>');
+        mbind("mo",closeModal);
       }
     };
-    reader.readAsText(file);
+    r.readAsText(f);
   }
 
-  /* ═══════════════════════════════════════════
+  /* ───────────────────────────────────────────
      Fullscreen
-     ═══════════════════════════════════════════ */
-  function toggleFs() {
-    if (!document.fullscreenElement)
-      document.documentElement.requestFullscreen().catch(function () { showToast("تمام‌صفحه پشتیبانی نمی‌شود"); });
-    else
-      document.exitFullscreen();
+  ─────────────────────────────────────────── */
+  function toggleFs(){
+    if(!document.fullscreenElement)
+      document.documentElement.requestFullscreen().catch(function(){toast("تمام‌صفحه پشتیبانی نمی‌شود");});
+    else document.exitFullscreen();
   }
-  document.addEventListener("fullscreenchange", function () {
-    var on = !!document.fullscreenElement;
-    if (DOM.fsBtn) DOM.fsBtn.innerHTML = '<i class="fa-solid ' + (on ? "fa-compress" : "fa-expand") + '"></i>';
+  document.addEventListener("fullscreenchange",function(){
+    if(D.fsB) D.fsB.innerHTML='<i class="fa-solid '+(document.fullscreenElement?"fa-compress":"fa-expand")+'"></i>';
   });
 
-  /* ═══════════════════════════════════════════
-     Event wiring
-     ═══════════════════════════════════════════ */
-  // Header
-  on("btn-add-space",  openNewSpace);
-  on("btn-space-menu", openSpaceMenu);
-  on("btn-theme",      toggleTheme);
-  on("btn-fullscreen", toggleFs);
-  on("btn-export",     doExport);
-  on("btn-import",     function () { DOM.importFile.click(); });
-  on("fab-add",        openAddBox);
-  on("btn-empty-add",  openAddBox);
-
-  // Mobile toolbar — IDs differ from modal IDs to avoid collision
-  on("mob-add",    openAddBox);
-  on("mob-theme",  toggleTheme);
-  on("mob-export", doExport);
-  on("mob-import", function () { DOM.importFile.click(); });
-  on("mob-search", function () {
-    var wrap = q("search-wrap");
-    wrap.classList.toggle("is-open");
-    if (wrap.classList.contains("is-open")) DOM.search.focus();
-  });
-
-  DOM.importFile.addEventListener("change", onImportFile);
-
-  DOM.search.addEventListener("input", function () {
+  /* ───────────────────────────────────────────
+     Search
+  ─────────────────────────────────────────── */
+  D.search.addEventListener("input",function(){
     renderBoxes();
-    // scroll to first highlighted result
-    var first = DOM.boxes.querySelector(".is-highlight");
-    if (first) {
-      DOM.scroll.scrollTo({
-        left:     Math.max(0, (parseInt(first.style.left) || 0) - 60),
-        top:      Math.max(0, (parseInt(first.style.top)  || 0) - 60),
-        behavior: "smooth"
+    var first=D.boxes.querySelector(".is-highlight");
+    if(first){
+      D.scroll.scrollTo({
+        left:Math.max(0,(parseInt(first.style.left)||0)-60),
+        top:Math.max(0,(parseInt(first.style.top)||0)-60),
+        behavior:"smooth"
       });
     }
   });
 
-  window.addEventListener("error", function () { showToast("خطای غیرمنتظره رخ داد"); });
+  /* ───────────────────────────────────────────
+     Event wiring
+  ─────────────────────────────────────────── */
+  clk("btn-add-space",  openNewSpace);
+  clk("btn-space-menu", openSpaceMenu);
+  clk("btn-theme",      toggleTheme);
+  clk("btn-fullscreen", toggleFs);
+  clk("btn-export",     doExport);
+  clk("btn-import",     function(){D.file.click();});
+  clk("fab-add",        openAddBox);
+  clk("btn-empty-add",  openAddBox);
 
-  /* ═══════════════════════════════════════════
+  // mobile toolbar
+  clk("mob-add",    openAddBox);
+  clk("mob-theme",  toggleTheme);
+  clk("mob-export", doExport);
+  clk("mob-import", function(){D.file.click();});
+  clk("mob-search", function(){
+    var w=$i("search-wrap");
+    w.classList.toggle("is-open");
+    if(w.classList.contains("is-open")) D.search.focus();
+  });
+
+  D.file.addEventListener("change",onImportFile);
+  window.addEventListener("error",function(){toast("خطای غیرمنتظره");});
+
+  /* ───────────────────────────────────────────
      Boot
-     ═══════════════════════════════════════════ */
-  load();
-  applyTheme();
-  renderAll();
-  DOM.scroll.scrollTo(80, 60);
+  ─────────────────────────────────────────── */
+  load(); applyTheme(); renderAll();
+  D.scroll.scrollTo(80,60);
 
 })();
