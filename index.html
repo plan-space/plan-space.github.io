@@ -13,65 +13,61 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+<div class="app-shell">
 
   <a class="skip-link" href="#workspace">رفتن به فضای کار</a>
 
-  <!-- ── Header ── -->
+  <!-- Header -->
   <header class="app-header">
     <div class="header-left">
-      <div class="brand" aria-label="Plan Space">
+      <a class="brand" href="#" aria-label="Plan Space">
         <img class="brand-logo"
              src="https://cdn.imgurl.ir/uploads/e9468_InShot_20260930_203439477.png"
-             alt="" width="32" height="32" />
+             alt="" width="28" height="28" />
         <span class="brand-name">Plan Space</span>
-      </div>
+      </a>
       <nav class="space-tabs" id="space-tabs" aria-label="اسپیس‌ها"></nav>
       <button type="button" class="icon-btn" id="btn-add-space" aria-label="اسپیس جدید">
         <i class="fa-solid fa-plus" aria-hidden="true"></i>
       </button>
     </div>
-
     <div class="header-right">
       <div class="search-wrap" id="search-wrap">
         <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-        <input type="search" id="search-input"
-               placeholder="جستجو در اسپیس…"
-               autocomplete="off" aria-label="جستجو" />
+        <input type="search" id="search-input" placeholder="جستجو…" autocomplete="off" aria-label="جستجو" />
       </div>
-      <button type="button" class="icon-btn" id="btn-theme"      aria-label="تغییر تم">
+      <button type="button" class="icon-btn" id="btn-theme" aria-label="تم">
         <i class="fa-solid fa-moon" aria-hidden="true"></i>
       </button>
       <button type="button" class="icon-btn" id="btn-fullscreen" aria-label="تمام‌صفحه">
         <i class="fa-solid fa-expand" aria-hidden="true"></i>
       </button>
-      <button type="button" class="icon-btn" id="btn-export"     aria-label="خروجی JSON">
+      <button type="button" class="icon-btn" id="btn-export" aria-label="خروجی JSON">
         <i class="fa-solid fa-file-export" aria-hidden="true"></i>
       </button>
-      <button type="button" class="icon-btn" id="btn-import"     aria-label="ورود JSON">
+      <button type="button" class="icon-btn" id="btn-import" aria-label="ورود JSON">
         <i class="fa-solid fa-file-import" aria-hidden="true"></i>
       </button>
-      <button type="button" class="icon-btn header-more" id="btn-space-menu" aria-label="منوی اسپیس">
+      <button type="button" class="icon-btn always-show" id="btn-space-menu" aria-label="منوی اسپیس">
         <i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i>
       </button>
     </div>
   </header>
 
-  <!-- ── Canvas ── -->
+  <!-- Canvas -->
   <main class="workspace" id="workspace">
     <div class="canvas-scroll" id="canvas-scroll">
       <div class="canvas" id="canvas">
         <div class="canvas-dots" aria-hidden="true"></div>
         <svg class="connections" id="connections" aria-hidden="true"></svg>
         <div class="boxes-layer" id="boxes-layer"></div>
-
         <div class="empty-state" id="empty-state" hidden>
           <div class="empty-inner">
             <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
             <h2>فضای خالی</h2>
-            <p>اولین باکس را بساز تا نقشه‌ات شکل بگیرد.</p>
+            <p>اولین باکس رو بساز تا نقشه‌ات شکل بگیره.</p>
             <button type="button" class="btn-primary" id="btn-empty-add">
-              <i class="fa-solid fa-plus" aria-hidden="true"></i>
-              افزودن باکس
+              <i class="fa-solid fa-plus"></i> افزودن باکس
             </button>
           </div>
         </div>
@@ -79,15 +75,15 @@
     </div>
   </main>
 
-  <!-- ── Mobile toolbar ── -->
-  <nav class="mobile-toolbar" id="mobile-toolbar" aria-label="نوار ابزار موبایل">
-    <button type="button" class="icon-btn" id="mob-add"    aria-label="افزودن باکس">
+  <!-- Mobile toolbar -->
+  <nav class="mobile-toolbar" id="mobile-toolbar" aria-label="نوار موبایل">
+    <button type="button" class="icon-btn" id="mob-add" aria-label="افزودن باکس">
       <i class="fa-solid fa-plus" aria-hidden="true"></i>
     </button>
     <button type="button" class="icon-btn" id="mob-search" aria-label="جستجو">
       <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
     </button>
-    <button type="button" class="icon-btn" id="mob-theme"  aria-label="تم">
+    <button type="button" class="icon-btn" id="mob-theme" aria-label="تم">
       <i class="fa-solid fa-moon" aria-hidden="true"></i>
     </button>
     <button type="button" class="icon-btn" id="mob-export" aria-label="خروجی">
@@ -98,16 +94,19 @@
     </button>
   </nav>
 
-  <!-- ── FAB ── -->
-  <button type="button" class="fab" id="fab-add" aria-label="افزودن باکس">
-    <i class="fa-solid fa-plus" aria-hidden="true"></i>
-  </button>
+</div><!-- /.app-shell -->
 
-  <!-- ── Overlays ── -->
-  <div class="modal-root" id="modal-root" hidden></div>
-  <div class="toast-root" id="toast-root" aria-live="polite" aria-atomic="true"></div>
-  <input type="file" id="import-file" accept="application/json,.json" hidden />
+<!-- FAB outside shell so it's not clipped -->
+<button type="button" class="fab" id="fab-add" aria-label="افزودن باکس">
+  <i class="fa-solid fa-plus" aria-hidden="true"></i>
+</button>
 
-  <script src="script.js"></script>
+<!-- Overlays -->
+<div class="modal-root" id="modal-root" hidden></div>
+<div class="toast-root" id="toast-root" aria-live="polite" aria-atomic="true"></div>
+<input type="file" id="import-file" accept="application/json,.json" hidden />
+<input type="file" id="img-file"    accept="image/*" hidden />
+
+<script src="script.js"></script>
 </body>
 </html>
